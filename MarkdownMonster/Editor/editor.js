@@ -8,14 +8,14 @@ var te = window.textEditor = {
     editor: null, // Ace Editor instance
     previewRefresh: 800,
     settings: editorSettings,
-    lastError: null,
+    lastError: null,    
     dic: null,
     aff: null,
     isDirty: false,
     mousePos: { column: 0, row: 0 },
     spellcheck: null,
 
-    initialize: function() {
+    initialize: function () {
 
         // attach ace to formatted code controls if they are loaded and visible
         var $el = $("pre[lang]");
@@ -24,18 +24,20 @@ var te = window.textEditor = {
             var aceEditorRequest = ace.edit($el[0]);
             te.editor = aceEditorRequest;
             te.configureAceEditor(aceEditorRequest, editorSettings);
-            aceEditorRequest.getSession().setMode("ace/mode/" + codeLang);
+
+            te.setlanguage(codeLang);            
         } catch (ex) {
             if (typeof console !== "undefined")
                 console.log("Failed to bind syntax: " + codeLang + " - " + ex.message);
         }
-        te.editor.focus();
+
+        //te.editor.focus();
 
         // explicitly call this from WPF
         //if (editorSettings.enableSpellChecking)
         //    setTimeout(spellcheck.enable, 1000);
     },
-    configureAceEditor: function(editor, editorSettings) {
+    configureAceEditor: function (editor, editorSettings) {
         if (!editor)
             editor = te.editor;
         if (!editorSettings)
@@ -59,47 +61,66 @@ var te = window.textEditor = {
         session.setUseWrapMode(editorSettings.wrapText);
         session.setOption("indentedSoftWrap", false);
 
-
         editor.renderer.setShowGutter(editorSettings.showLineNumbers);
+        editor.setOption("scrollPastEnd", 0.7); // will have additional scroll  0.7% of screen height
+        editor.$blockScrolling = Infinity;
+
         session.setTabSize(editorSettings.tabSpaces);
 
+        //editor.setOptions({
+        //    enableBasicAutocompletion: true
+        //});
+        
         session.setNewLineMode("windows");
 
         // disable certain hot keys in editor so we can handle them here        
         editor.commands.bindKeys({
             //"alt-k": null,
-            "ctrl-n": function() {
+            "ctrl-n": function () {
                 te.specialkey("ctrl-n");
                 // do nothing but:
                 // keep ctrl-n browser behavior from happening
                 // and let WPF handle the key
             },
-            "f5": function() {
-                // avoid page refresh
+            "f5": function () {
+                te.editor.blur(); // HACK: avoid letter o insertion into document IE bug
+                te.specialkey("f5");
+                setTimeout(function () { te.editor.focus(); }, 20);                
             },
+            "ctrl-f5": function () {
+                te.editor.blur(); // HACK: avoid letter o insertion into document IE bug
+                te.specialkey("f5");
+                setTimeout(function () { te.editor.focus(); }, 20);  
+            },
+            //"ctrl-f5": function() {
+            //    // avoid page refresh
+            //},
             //"f1": function () {
             //    te.specialkey("f1");
             //},
             // save
-            "ctrl-s": function() { te.specialkey("ctrl-s"); },
+            "ctrl-s": function () {
+                te.mm.textbox.IsDirty(); // force document to update
+                te.specialkey("ctrl-s");
+            },
             // Open document
-            "ctrl-o": function() {
+            "ctrl-o": function () {
                 te.editor.blur(); // HACK: avoid letter o insertion into document IE bug
                 te.specialkey("ctrl-o");
-                setTimeout(function() { te.editor.focus(); }, 20);
+                setTimeout(function () { te.editor.focus(); }, 20);
             },
 
             // link
-            "ctrl-k": function() { te.specialkey("ctrl-k"); },
+            "ctrl-k": function () { te.specialkey("ctrl-k"); },
             // print
-            "ctrl-p": function() { te.specialkey("ctrl-p") },
+            "ctrl-p": function () { te.specialkey("ctrl-p") },
             // turn lines into list
             "ctrl-l": function () { te.specialkey("ctrl-l"); },
             // Emoji
             "ctrl-j": function () { te.specialkey("ctrl-j") },
 
             // Image emedding
-            "alt-i": function() { te.specialkey("alt-i"); },
+            "alt-i": function () { te.specialkey("alt-i"); },
 
             // find again redirect
             "f3": function () { te.editor.execCommand("findnext") },
@@ -107,8 +128,8 @@ var te = window.textEditor = {
             "alt-c": function () { te.specialkey("alt-c"); },
             // inline code 
             "ctrl-`": function () { te.specialkey("ctrl-`"); },
-            
-            "ctrl-b": function() { te.specialkey("ctrl-b"); },
+
+            "ctrl-b": function () { te.specialkey("ctrl-b"); },
             "ctrl-i": function () { te.specialkey("ctrl-i"); },
 
             // delete line
@@ -120,27 +141,27 @@ var te = window.textEditor = {
             "ctrl-shift-tab": function () { te.specialkey("ctrl-shift-tab"); },
 
             // take over Zoom keys and manually zoom
-            "ctrl--": function() {
+            "ctrl--": function () {
                 te.specialkey("ctrl--");
                 return null;
             },
-            "ctrl-=": function() {
+            "ctrl-=": function () {
                 te.specialkey("ctrl-=");
                 return null;
             },
             //"alt-shift-enter": function() { te.specialkey("alt-shift-enter")},
-            "ctrl-shift-down": function() { te.specialkey("ctrl-shift-down"); },
+            "ctrl-shift-down": function () { te.specialkey("ctrl-shift-down"); },
             "ctrl-shift-up": function () { te.specialkey("ctrl-shift-up"); },
 
             // Paste as Markdown/From Html
-            "ctrl-shift-c": function() { te.specialkey("ctrl-shift-c"); },
+            "ctrl-shift-c": function () { te.specialkey("ctrl-shift-c"); },
             "ctrl-shift-v": function () { te.specialkey("ctrl-shift-v"); },
 
             // remove markdown formatting
             "ctrl-shift-z": function () { te.specialkey("ctrl-shift-z"); },
 
             // Capture paste operation in WPF to handle Images
-            "ctrl-v": function() { te.mm.textbox.PasteOperation(); }
+            "ctrl-v": function () { te.mm.textbox.PasteOperation(); }
         });
 
         editor.renderer.setPadding(15);
@@ -155,20 +176,20 @@ var te = window.textEditor = {
             //wrapBehavioursEnabled: editorSettings.wrapText                       
         });
 
-        var updateDocument = debounce(function() {
+        var updateDocument = debounce(function () {
             if (!te.mm)
                 return;
             te.isDirty = te.mm.textbox.IsDirty();
             te.mm.textbox.PreviewMarkdownCallback(true);  // don't get markdown again
             te.updateDocumentStats();
-        },te.previewRefresh);  
+        }, te.previewRefresh);
         $("pre[lang]").on("keyup", updateDocument);
 
 
         // always have mouse position available when drop or paste
         te.editor.on("mousemove",
-            function(e) {
-                te.mousePos = e.getDocumentPosition();                
+            function (e) {
+                te.mousePos = e.getDocumentPosition();
             });
         te.editor.on("mouseup",
             function () {
@@ -179,14 +200,14 @@ var te = window.textEditor = {
 
                 // spellcheck - force recheck on next cycle
                 if (sc)
-                    sc.contentModified = true;                  
+                    sc.contentModified = true;
             });
         // used to force mouse position to whatever the existing cursor position is
         // when dragging from explorer. Without this files are always dropped at the
         // end of the document. With this it's dropped at the current cursor position
         // (better but not optimal)
-        window.ondragover = function (e) {            
-            te.mousePos = te.editor.getCursorPosition();            
+        window.ondragover = function (e) {
+            te.mousePos = te.editor.getCursorPosition();
         }
         // Let browser navigate events handle drop operations
         // in the WPF host application
@@ -223,55 +244,53 @@ var te = window.textEditor = {
         //    function (e) {                
         //        alert('drag over');
         //        te.mousePos = e.getDocumentPosition();
-        //    });
-        var changeScrollTop = debounce(function () {
-                // if there is a selection don't set cursor position
-                // or preview. Mouseup will scroll to position at end
-                // of selection
-                var sel = te.getselection();
-                if (sel && sel.length > 0)
-                    return;
-
+        //    });        
+        var changeScrollTop = debounce(function (e) {
+            // if there is a selection don't set cursor position
+            // or preview. Mouseup will scroll to position at end
+            // of selection            
+            var sel = te.getselection();
+            if (sel && sel.length > 0)
+                return;
+            
+            setTimeout(function () {
                 var firstRow = te.editor.renderer.getFirstVisibleRow();
-                var lastRow = te.editor.renderer.getLastVisibleRow();
-                var curRow = te.getLineNumber();            
-                if (curRow < firstRow || curRow > lastRow) {
-                    if (firstRow < 3)
-                        te.setCursorPosition(0, 0);
-                    else                        
-                        te.setCursorPosition(firstRow + 3, 0);
-                    
-                    setTimeout(function() {                        
-                        te.mm.textbox.PreviewMarkdownCallback();
-                    }, 10);                    
-                }
-            },
-            10);
+                if (firstRow > 2)
+                    firstRow+=3;
+
+                // preview and highlight top of display
+                te.mm.textbox.PreviewMarkdownCallback(false,firstRow);
+            }, 10);
+            setTimeout(function () {
+                if (sc)
+                    sc.contentModified = true;
+            }, 150);
+        },35);
         te.editor.session.on("changeScrollTop", changeScrollTop);
         return editor;
     },
-    initializeeditor: function() {
+    initializeeditor: function () {
         te.configureAceEditor(null, null);
     },
-    status: function(msg) {
+    status: function status(msg) {
         //alert(msg);
         status(msg);
     },
-    getscrolltop: function (ignored) {        
-        var st = te.editor.getSession().getScrollTop();        
+    getscrolltop: function (ignored) {
+        var st = te.editor.getSession().getScrollTop();
         return st;
     },
     setscrolltop: function (scrollTop) {
-        setTimeout(function() {
-                return te.editor.getSession().setScrollTop(scrollTop);
-            },
+        setTimeout(function () {
+            return te.editor.getSession().setScrollTop(scrollTop);
+        },
             100);
     },
-    getvalue: function(ignored) {
+    getvalue: function (ignored) {
         var text = te.editor.getSession().getValue();
         return text.toString();
     },
-    setvalue: function(text, pos) {
+    setvalue: function (text, pos) {
         if (!pos)
             pos = -1; // first line
 
@@ -294,10 +313,37 @@ var te = window.textEditor = {
 
         te.editor.getSession().setUndoManager(new ace.UndoManager());
 
-        setTimeout(function() {
-                te.editor.resize(true); //force a redraw
-            },
+        setTimeout(function () {
+            te.editor.resize(true); //force a redraw
+        },
             30);
+    },
+    setReadOnly: function (status) {
+        if (te.editor.readOnly == status)
+            return;
+        te.editor.setReadOnly(status);
+        //.readOnly = status;        
+        if (status) {                
+            te.editor.container.style.opacity = 0.70;                
+            $(te.editor.container).on("dblclick", te.readOnlyDoubleClick);
+        } else {
+            $(te.editor.container).off("dblclick", te.readOnlyDoubleClick);
+            te.editor.container.style.opacity = 1; // or use svg filter to make it gray            
+        }
+    },
+    readOnlyDoubleClick: function () {    
+        if (!te.mm)
+            return;
+
+        te.mm.textbox.NotifyAddins("ReadOnlyEditorDoubleClick",null);
+    },
+    // replaces content without completely reloading the document
+    // by using clipboard replacement
+    // Leaves scroll position intact
+    replacecontent: function(text) {
+        var sel = te.editor.getSelection();
+        sel.selectAll();
+        te.setselection(text);
     },
     refresh: function(ignored) {
         te.editor.resize(true); //force a redraw
@@ -322,24 +368,30 @@ var te = window.textEditor = {
         return fontsize;
     },
 
-    gotoLine: function (line) {
-        setTimeout(function() {
-                te.editor.scrollToLine(line);
+    gotoLine: function (line, noRefresh, noSelection) {
+        setTimeout(function () {
+            te.editor.scrollToLine(line);
+
+            if (!noSelection) {
                 var sel = te.editor.getSelection();
                 var range = sel.getRange();
                 range.setStart({ row: line, column: 0 });
                 range.setEnd({ row: line, column: 0 });
                 sel.setSelectionRange(range);
-
+            }
+            if (!noRefresh)
                 setTimeout(te.refreshPreview, 10);
+            
         },100);
     },
-    gotoBottom: function (ignored) {
+    gotoBottom: function (noRefresh) {
         setTimeout(function() {
                 var row = te.editor.session.getLength() - 1;
                 var column = te.editor.session.getLine(row).length; // or simply Infinity
-                te.editor.selection.moveTo(row, column);
-                setTimeout(te.refreshPreview, 10);                
+             te.editor.selection.moveTo(row, column);
+
+                if(!noRefresh)
+                    setTimeout(te.refreshPreview, 10);                
             },
             70);
     },
@@ -349,6 +401,7 @@ var te = window.textEditor = {
     setselection: function(text) {
         var range = te.editor.getSelectionRange();
         te.editor.session.replace(range, text);
+        te.editor.renderer.scrollSelectionIntoView();
     },
     getselection: function(ignored) {
         return te.editor.getSelectedText();
@@ -376,7 +429,9 @@ var te = window.textEditor = {
         var range = sel.getRange();
         range.setStart(start);
         range.setEnd(end);
-        sel.setSelectionRange(range);
+        sel.setSelectionRange(range); 
+
+        te.editor.renderer.scrollSelectionIntoView();
     },
     setselpositionfrommouse: function(pos) {
         if (!pos)
@@ -386,7 +441,7 @@ var te = window.textEditor = {
         var range = sel.getRange();
         range.setStart(pos);
         range.setEnd(pos);
-        sel.setSelectionRange(range);
+        sel.setSelectionRange(range);        
     },
     getCursorPosition: function (ignored) { // returns {row: y, column: x}               
         return te.editor.selection.getCursor();        
@@ -438,8 +493,7 @@ var te = window.textEditor = {
     },
     getLineNumber: function(ignored) {
         var selectionRange = te.editor.getSelectionRange();
-        if (!selectionRange) {
-            status("no selection range...");
+        if (!selectionRange) {            
             return -1;
         }
         return Math.floor(selectionRange.start.row);
@@ -465,9 +519,11 @@ var te = window.textEditor = {
             return;
 
         range.start.column = 0;        
-        range.end.column = 2000;
+        range.end.column = 5000;
+
         
-        te.editor.session.replace(range, replace);        
+            te.setselection(replace);                    
+
     },
     findAndReplaceTextInCurrentLine: function (search, replace) {
         var range = te.editor.getSelectionRange();
@@ -515,27 +571,42 @@ var te = window.textEditor = {
 
         te.editor.getSession().setMode("ace/mode/" + lang);
     },
-    settheme: function (theme, font, fontSize, wrapText, highlightActiveLine,keyboardHandler) {
-        te.editor.setTheme("ace/theme/" + theme);
-
-        te.editor.setOptions({
-            fontFamily: font,
-            fontSize: fontSize
-        });
+    setEditorStyle: function (styleJson) {
         
-        wrapText = wrapText || false;        
+        var style = JSON.parse(styleJson);
+
+        te.editor.container.style.lineHeight = style.LineHeight;
+        te.editor.setTheme("ace/theme/" + style.Theme);        
+        te.editor.setOptions({
+            fontFamily: style.Font,
+            fontSize: style.FontSize
+        });        
+
+        var wrapText = style.WrapText;
 
         var session = te.editor.getSession();
         session.setUseWrapMode(wrapText);
-        session.setOption("indentedSoftWrap", true);        
+        session.setOption("indentedSoftWrap", true);
 
-        te.editor.setHighlightActiveLine(highlightActiveLine);        
+        te.editor.setHighlightActiveLine(style.HighlightActiveLine);
 
-        keyboardHandler = keyboardHandler.toLowerCase();
-        if (!keyboardHandler || keyboardHandler == "default" || keyboardHandler == "ace")
-            te.editor.setKeyboardHandler("");
-        else
-            te.editor.setKeyboardHandler("ace/keyboard/" + keyboardHandler);
+        te.editor.renderer.setShowGutter(style.ShowLineNumbers);
+        te.editor.renderer.setShowInvisibles(style.ShowInvisibles);
+
+        
+        //var keyboardHandler = style.KeyboardHandler.toLowerCase();
+        //if (!keyboardHandler || keyboardHandler == "default" || keyboardHandler == "ace")
+        //    te.editor.setKeyboardHandler("");
+        //else
+        //    te.editor.setKeyboardHandler("ace/keyboard/" + keyboardHandler);
+
+        
+        if (!style.EnableBulletAutoCompletion) {
+            // turn off bullet auto-completion (or any new line auto-completion)
+            te.editor.getSession().getMode().getNextLineIndent = function(state, line) {
+                return this.$getIndent(line);
+            };
+        }
 
         setTimeout(te.updateDocumentStats, 100);
     },
@@ -554,11 +625,6 @@ var te = window.textEditor = {
     curStats: { wordCount: 0, lines: 0, characters: 0 },
     getDocumentStats: function () {
         var text = te.getvalue();
-
-        // strip off blog post meta data at end of document
-        var pos = text.indexOf("\n<!-- Post Configuration -->");
-        if (pos > 0)
-            text = text.substr(0, pos - 1);
 
         // strip off front matter.
         var frontMatterExp = /^---[ \t]*$[^]+?^(---|...)[ \t]*$/m;
@@ -599,15 +665,9 @@ var te = window.textEditor = {
     checkSpelling: function (word) {        
         if (!word || !editorSettings.enableSpellChecking)
             return true;
-
-        // use typo
-        if (spellcheck.dictionary) {            
-            var isOk = spellcheck.dictionary.check(word);            
-            return isOk;
-        }
-
-        // use COM object        
-        return te.mm.textbox.CheckSpelling(word,editorSettings.dictionary,false);
+        if (te.mm)   
+            // use COM object        
+            return te.mm.textbox.CheckSpelling(word,editorSettings.dictionary,false);
     },
     showSuggestions: function (e) {
         try {
@@ -655,8 +715,8 @@ var te = window.textEditor = {
         if (sc)
             sc.spellCheck(true);
     },
-    replaceSpellRange: function(range, text) {
-        te.editor.getSession().replace(range, text); 
+    replaceSpellRange: function (range, text) {        
+        te.editor.getSession().replace(range, text);         
         if (sc)
             sc.spellCheck(true);
     },
@@ -729,13 +789,18 @@ window.onmousewheel = function(e) {
  //}
 
 // pass context popup to WPF for handling there
-window.oncontextmenu = function (e) {
+window.oncontextmenu = function (e) {    
+    var isIE = navigator.userAgent.indexOf("Trident") > -1 ? true : false;    
+    if (!isIE)
+        return;
+
     e.preventDefault();
     e.cancelBubble = true;
 
-    te.showSuggestions(e);
+    if (te.mm)
+        te.showSuggestions(e);
 
-    return navigator.userAgent.indexOf("Trident") > -1 ? false : true;
+    return false;
 }
 
 // This function is global and called by the parent

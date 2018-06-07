@@ -35,6 +35,7 @@ using System;
 using System.IO;
 using System.Text.RegularExpressions;
 using Markdig;
+using Markdig.Extensions.Tables;
 using Markdig.Renderers;
 using Westwind.Utilities;
 
@@ -67,6 +68,9 @@ namespace MarkdownMonster
             if (string.IsNullOrEmpty(markdown))
                 return string.Empty;
 
+            if (mmApp.Configuration.MarkdownOptions.ParseDocFxIncludeFiles)
+              markdown = ParseDocFxIncludeFiles(markdown);
+
             var htmlWriter = new StringWriter();
             var renderer = CreateRenderer(htmlWriter);
 
@@ -97,17 +101,24 @@ namespace MarkdownMonster
         /// <returns></returns>
         protected virtual MarkdownPipelineBuilder BuildPipeline(MarkdownOptionsConfiguration options, MarkdownPipelineBuilder builder)
         {
+            
+
             if (options.AutoLinks)
                 builder = builder.UseAutoLinks();
             if (options.AutoHeaderIdentifiers)
-                builder = builder.UseAutoIdentifiers();
+                builder = builder.UseAutoIdentifiers(Markdig.Extensions.AutoIdentifiers.AutoIdentifierOptions.GitHub);
             if (options.Abbreviations)
                 builder = builder.UseAbbreviations();
 
+            if (options.UseTables)            
+                builder = builder
+                    .UsePipeTables()
+                    .UseGridTables();
+            
             if (options.StripYamlFrontMatter)
                 builder = builder.UseYamlFrontMatter();
             if (options.EmojiAndSmiley)
-                builder = builder.UseEmojiAndSmiley();
+                builder = builder.UseEmojiAndSmiley(true);
             if (options.MediaLinks)
                 builder = builder.UseMediaLinks();
             if (options.ListExtras)
@@ -118,10 +129,24 @@ namespace MarkdownMonster
                 builder = builder.UseTaskLists();
             if (options.SmartyPants)
                 builder = builder.UseSmartyPants();
+            if(options.Diagrams)
+                builder = builder.UseDiagrams();
+            if (options.CustomContainers)
+                builder = builder.UseCustomContainers();
+            if (options.Attributes)
+                builder = builder.UseGenericAttributes();
+            if (options.FootersAndFootnotes)
+                builder = builder                    
+                    .UseFooters()
+                    .UseFootnotes();
+            if(options.NoHtml)
+                builder = builder.DisableHtml();
 
+            builder = builder.UseEmphasisExtras();
+                
             if (UsePragmaLines)
                 builder = builder.UsePragmaLines();
-
+            
             try
             {
                 if (!string.IsNullOrWhiteSpace(options.MarkdigExtensions))
@@ -133,6 +158,10 @@ namespace MarkdownMonster
             {
                 // One or more of the extension options is invalid. 
                 mmApp.Log("Failed to load Markdig extensions: " + options.MarkdigExtensions + "\r\n" + ex.Message, ex);
+
+                // reset to default
+                options.MarkdigExtensions = string.Empty;
+                builder = builder.Configure(options.MarkdigExtensions.Replace(",", "+"));                
             }
 
             return builder;

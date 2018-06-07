@@ -62,7 +62,12 @@ namespace MarkdownMonster.Configuration
 	    private string _folderPath;
 
 
-	    public List<string> RecentFolders { get; set; } = new List<string>();
+	    public string IgnoredFolders { get; set; } = ".git,node_modules";
+
+	    public string IgnoredFileExtensions { get; set; } = ".saved.bak,kavadocstopic.md";
+
+
+        public List<string> RecentFolders { get; set; } = new List<string>();
 
 	    /// <summary>
 	    /// Determines whether icons are displayed in folder browser        
@@ -77,7 +82,10 @@ namespace MarkdownMonster.Configuration
 
 	        folder = folder.TrimEnd('\\');
             
-	        var matchList = RecentFolders.Where(f => f.ToLower().Contains(folder.ToLower()) || !Directory.Exists(f)).ToList();
+	        var matchList = RecentFolders
+	                            .Where(f => f.ToLower().Contains(folder.ToLower()) || !Directory.Exists(f))
+	                            .ToList();
+
 	        for (var index = 0; index < matchList.Count; index++)	        	            
 	            RecentFolders.Remove(matchList[index]);
             

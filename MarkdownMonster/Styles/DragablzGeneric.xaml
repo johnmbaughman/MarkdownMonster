@@ -193,7 +193,7 @@
 
     <!-- RAS: Adjusted styles for MahApps -->
     <LinearGradientBrush x:Key="TabItem.Selected.Background" EndPoint="0,1" StartPoint="0,0">
-        <GradientStop Color="#656565" Offset="0.0"/>
+        <GradientStop Color="#555555" Offset="0.0"/>
         <GradientStop Color="#222222" Offset="0.4"/>
     </LinearGradientBrush>
     <SolidColorBrush x:Key="TabItem.Selected.Foreground" Color="#EEE"/>
@@ -656,6 +656,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <!--<ColumnDefinition Width="Auto" />-->
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
@@ -670,6 +671,13 @@
                     Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}" Height="25" Width="16" Margin="5,4,3,0"
                     fa:Awesome.Content="CaretDown" Background="#242424" BorderBrush="#333333"
                     CommandParameter="{Binding RelativeSource={RelativeSource Mode=Self}}" />
+
+            <!--<Button Grid.Column="2" x:Name="PART_ToggleRightSidebarButton" 
+                    Height="25" Width="16" Margin="5,4,3,0"
+                    fa:Awesome.Content="ArrowCircleRight" Foreground="SteelBlue"  HorizontalAlignment="Right"
+                    CommandParameter="{Binding RelativeSource={RelativeSource Mode=Self}}" />-->
+
+
             <!--<ScrollBar x:Name="PART_HorizontalScrollBar"
                        AutomationProperties.AutomationId="HorizontalScrollBar" 
                        Cursor="Arrow" Grid.Column="1" Maximum="{TemplateBinding ScrollableWidth}"
@@ -1104,8 +1112,8 @@
         <!--<Setter Property="Visibility" Value="Collapsed" />-->
         <!--<Setter Property="Visibility" Value="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type mm:MainWindow}}, Path=Model.Configuration.WindowPosition.IsTabHeaderPanelVisible,Converter={StaticResource BooleanToCollapsedVisibilityConverter}}" />-->
        
-        <Setter Property="Margin" Value="0 6 0 0"/>
-        <Setter Property="Padding" Value="5,1,10,3" />
+        <Setter Property="Margin" Value="0 4 0 0"/>
+        <Setter Property="Padding" Value="5,1,10,2" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         <Setter Property="VerticalContentAlignment" Value="Stretch"/>
         <Setter Property="Template">
@@ -1161,9 +1169,9 @@
                         <Trigger Property="IsSelected" Value="True">
                             <Setter Property="Foreground" Value="{StaticResource TabItem.Selected.Foreground}" TargetName="Trapezoid"/>
                             <Setter Property="Background" Value="{StaticResource TabItem.Selected.Background}" TargetName="Trapezoid"/>
-                             <Setter Property="FontWeight" Value="SemiBold"/>
-                             <Setter Property="Padding" Value="5,2,10,8"/>
-                            <Setter Property="Margin" Value="0 0 0 0"/>
+                             <!-- doesn't work as the content presenter renders <Setter Property="FontWeight" Value="SemiBold"/>-->
+                             <Setter Property="Padding" Value="5,2,10,6"/>
+                            <Setter Property="Margin" Value="0 2 0 0"/>
                             <Setter Property="LongBasePenBrush" Value="{StaticResource TabItem.Selected.Background}" TargetName="Trapezoid"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="False">

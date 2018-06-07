@@ -34,7 +34,7 @@ _ReSharper*/
 $tf*/
 packages*/
 _preview.html
-
+node_modules/
 
 WebEssentials-Settings.json
 InstallerFiles/FilesToInstall/AppData/Html/_preview.json
@@ -64,3 +64,4 @@ MarkdownMonster/Editor/scripts/Ace/theme-twilight - Copy.js
 /mm.vshost.exe.manifest
 /Tests/WeblogAddin.Test/apikey.txt
 {6AB5E445-9660-454B-BF02-506000EED978}
+MarkdownMonster/Editor/fileicons/sql.svg

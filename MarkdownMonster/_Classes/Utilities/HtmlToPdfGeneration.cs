@@ -121,9 +121,11 @@ namespace MarkdownMonster
 
 			sb.Append($"--page-size {PageSize} ");
 			sb.Append($"--orientation {Orientation} ");
+		    sb.Append("--enable-internal-links ");
+		    sb.Append("--keep-relative-links ");
+		    sb.Append("--print-media-type ");
 
-
-			sb.Append($"--footer-font-size {FooterFontSize} ");
+            sb.Append($"--footer-font-size {FooterFontSize} ");
 			if (ShowFooterLine)
 				sb.Append("--footer-line");
 
@@ -212,7 +214,7 @@ namespace MarkdownMonster
 
 			FullExecutionCommand = "\"" + exe + "\" " + parms;
 		    if (copyCommandLineToClipboard)
-		        Clipboard.SetText(FullExecutionCommand);
+		        ClipboardHelper.SetText(FullExecutionCommand);
 
 			using (Process process = new Process())
 			{

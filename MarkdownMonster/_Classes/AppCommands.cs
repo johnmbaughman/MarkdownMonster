@@ -1,16 +1,13 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Threading;
 using FontAwesome.WPF;
 using MarkdownMonster.AddIns;
+using MarkdownMonster.Utilities;
 using MarkdownMonster.Windows;
 using Microsoft.Win32;
 using Westwind.Utilities;
@@ -27,12 +24,16 @@ namespace MarkdownMonster
 
             // File Operations
             NewDocument();
-            OpenDocument();            
+            OpenDocument();
+            OpenFromUrl();
             Save();
             SaveAs();
             NewWeblogPost();
             OpenRecentDocument();
             SaveAsHtml();
+            GeneratePdf();
+            PrintPreview();
+
 
             // Links and External
             OpenSampleMarkdown();
@@ -40,25 +41,50 @@ namespace MarkdownMonster
             // Settings
             PreviewModes();
             RemoveMarkdownFormatting();
+            WordWrap();
+            DistractionFreeMode();
+            PresentationMode();
+            PreviewBrowser();
+            Settings();
+
 
             // Editor Commands
             ToolbarInsertMarkdown();
             CloseActiveDocument();
             CloseAllDocuments();
-            
+            ShowActiveTabsList();
+            CopyAsHtml();
+            SetDictionary();
+
+
+            // Preview Browser
+            EditPreviewTheme();
+            PreviewSyncMode();
+            ViewInExternalBrowser();
+            ViewHtmlSource();
 
 
             // Miscellaneous
             OpenAddinManager();
+
             Help();
             CopyFolderToClipboard();
             TabControlFileList();
-            ShowActiveTabsList();
+
+            // Git
+            OpenGitClient();
+            OpenFromGitRepo();
+            CommitToGit();
+
+
+            // Sidebar
+            CloseLeftSidebarPanel();
+            CloseRightSidebarPanel();
+            OpenLeftSidebarPanel();
+            ShowFolderBrowser();
         }
 
         #region Files And File Management
-
-
 
         public CommandBase NewDocumentCommand { get; set; }
 
@@ -102,7 +128,7 @@ namespace MarkdownMonster
                     Title = "Open Markdown File"
                 };
 
-                if (!string.IsNullOrEmpty(mmApp.Configuration.LastFolder))
+                if (!string.IsNullOrEmpty(mmApp.Configuration.LastFolder) && Directory.Exists(mmApp.Configuration.LastFolder))
                     fd.InitialDirectory = mmApp.Configuration.LastFolder;
 
                 bool? res = null;
@@ -112,7 +138,7 @@ namespace MarkdownMonster
                 }
                 catch (Exception ex)
                 {
-                    mmApp.Log("Unable to open file.", ex);
+                    mmApp.Log($"Handled. Unable to open file in {fd.InitialDirectory}", ex);
                     MessageBox.Show(
                         $@"Unable to open file:\r\n\r\n" + ex.Message,
                         "An error occurred trying to open a file",
@@ -125,13 +151,99 @@ namespace MarkdownMonster
 
                 foreach (var file in fd.FileNames)
                 {
-                    // TODO: Check AddRecentFile and make sure Tab Selection works
                     Model.Window.OpenTab(file, rebindTabHeaders: true);
-                    //Window.AddRecentFile(file);
                 }
-                
+
             });
         }
+
+
+        public CommandBase OpenFromUrlCommand { get; set; }
+
+        void OpenFromUrl()
+        {
+            OpenFromUrlCommand = new CommandBase((parameter, command) =>
+            {
+                var form = new OpenFromUrlDialog();
+                form.Owner = Model.Window;
+                var result = form.ShowDialog();
+
+                if (result == null || !result.Value || string.IsNullOrEmpty(form.Url))
+                    return;
+
+                var url = form.Url;
+                bool fixupImageLinks = form.FixupImageLinks;
+
+                var fs = new FileSaver();
+                url = fs.ParseMarkdownUrl(url);
+
+                string markdown;
+                try
+                {
+                    markdown = HttpUtils.HttpRequestString(url);
+                }
+                catch (System.Net.WebException ex)
+                {
+                    Model.Window.ShowStatusError($"Can't open from url: {ex.Message}");
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(markdown))
+                {
+                    Model.Window.ShowStatusError($"No content found at URL: {url}");
+                    return;
+                }
+
+                if (fixupImageLinks && url.EndsWith(".md", StringComparison.CurrentCultureIgnoreCase))
+                {
+                    var uri = new Uri(url);
+                    string basePath =
+                        $"{uri.Scheme}://{uri.Authority}{string.Join("", uri.Segments.Take(uri.Segments.Length - 1))}";
+
+
+                    var reg = new Regex("!\\[.*?]\\(.*?\\)");
+
+                    var matches = reg.Matches(markdown);
+                    foreach (Match match in matches)
+                    {
+                        var link = match.Value;
+                        var linkUrl = StringUtils.ExtractString(link, "](", ")");
+
+                        if (linkUrl.StartsWith("http"))
+                            continue;
+
+                        var text = StringUtils.ExtractString(link, "![", "](");
+                        linkUrl = basePath + linkUrl;
+
+                        var newLink = $"![{text}]({linkUrl})";
+                        markdown = markdown.Replace(link, newLink);
+                    }
+
+                    reg = new Regex("<img src=\\\".*?/>");
+
+                    matches = reg.Matches(markdown);
+                    foreach (Match match in matches)
+                    {
+                        var link = match.Value;
+                        var linkUrl = StringUtils.ExtractString(link, " src=\"", "\"");
+
+                        if (linkUrl.StartsWith("http"))
+                            continue;
+
+                        string newLink = basePath + linkUrl;
+                        newLink = link.Replace(linkUrl, newLink);
+
+                        markdown = markdown.Replace(link, newLink);
+                    }
+                }
+
+                var tab = Model.Window.OpenTab("untitled");
+                ((MarkdownDocumentEditor) tab.Tag).MarkdownDocument.CurrentText = markdown;
+                Model.Window.PreviewMarkdownAsync();
+
+            });
+        }
+
 
 
         public CommandBase SaveCommand { get; set; }
@@ -145,6 +257,8 @@ namespace MarkdownMonster
                 if (tab == null)
                     return;
                 var doc = tab.Tag as MarkdownDocumentEditor;
+                if (doc == null)
+                    return;
 
                 if (doc.MarkdownDocument.Filename == "untitled")
                     SaveAsCommand.Execute(tab);
@@ -156,7 +270,7 @@ namespace MarkdownMonster
                 Model.Window.PreviewMarkdown(doc, keepScrollPosition: true);
             }, (s, e) =>
             {
-                if (Model.ActiveDocument == null)
+                if (!Model.IsEditorActive)
                     return false;
 
                 return Model.ActiveDocument.IsDirty;
@@ -260,16 +374,10 @@ namespace MarkdownMonster
                     }
                     mmApp.Configuration.LastFolder = Path.GetDirectoryName(sd.FileName);
                 }
-                
+
                 Model.Window.SetWindowTitle();
                 Model.Window.PreviewMarkdown(doc, keepScrollPosition: true);
-            }, (s, e) =>
-            {
-                if (Model.ActiveDocument == null)
-                    return false;
-
-                return true;
-            });
+            }, (s, e) => Model.IsEditorActive);
         }
 
 
@@ -280,7 +388,7 @@ namespace MarkdownMonster
         {
             NewWeblogPostCommand = new CommandBase((parameter, command) =>
             {
-                
+
                 AddinManager.Current.RaiseOnNotifyAddin("newweblogpost", null);
             });
         }
@@ -317,7 +425,7 @@ namespace MarkdownMonster
                     context.Visibility = Visibility.Visible;
                 }
 
-            }, (p, c) => true);
+            });
         }
 
 
@@ -338,14 +446,17 @@ namespace MarkdownMonster
                 SaveFileDialog sd = new SaveFileDialog
                 {
                     Filter =
-                        "Html files (Html only) (*.html)|*.html|Html files (Html and dependencies in a folder)|*.html",
+                        "Self contained Html Page with embedded dependencies (1 large file)|*.html|" +
+                        "Html Page with loose assets in Folder (pick an empty folder)|*.html|" +
+                        "Raw Html Fragment (generated Html only)|*.html",
                     FilterIndex = 1,
                     InitialDirectory = folder,
                     FileName = Path.ChangeExtension(doc.MarkdownDocument.Filename, "html"),
                     CheckFileExists = false,
                     OverwritePrompt = true,
                     CheckPathExists = true,
-                    RestoreDirectory = true
+                    RestoreDirectory = true,
+                    Title = "Save As Html"                    
                 };
 
                 bool? result = null;
@@ -365,7 +476,7 @@ namespace MarkdownMonster
 
                 if (result != null && result.Value)
                 {
-                    if (sd.FilterIndex != 2)
+                    if (sd.FilterIndex == 3)
                     {
                         var html = doc.RenderMarkdown(doc.GetMarkdown(),
                             mmApp.Configuration.MarkdownOptions.RenderLinksAsExternal);
@@ -378,30 +489,70 @@ namespace MarkdownMonster
                             SaveAsHtmlCommand.Execute(null);
                             return;
                         }
-                    }
+
+                        mmFileUtils.OpenFileInExplorer(sd.FileName);
+                        Model.Window.ShowStatus("Raw HTML File created.", mmApp.Configuration.StatusMessageTimeout);
+                    }                    
                     else
                     {
-                        string msg = @"This feature is not available yet.
 
-For now, you can use 'View in Web Browser' to view the document in your favorite Web Browser and use 'Save As...' to save the Html document with all CSS and Image dependencies.
+                        if (doc.MarkdownDocument.RenderHtmlToFile(usePragmaLines: false,
+                                renderLinksExternal: mmApp.Configuration.MarkdownOptions.RenderLinksAsExternal,
+                                filename: sd.FileName) == null)
+                        {
+                            MessageBox.Show(Model.Window,
+                                $"{sd.FileName}\r\n\r\nThis document can't be saved in this location. The file is either locked or you don't have permissions to save it. Please choose another location to save the file.",
+                                "Unable to save Document", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            SaveAsHtmlCommand.Execute(null);
+                            return;
+                        }
 
-Do you want to View in Browser now?
-";
-                        var mbResult = MessageBox.Show(msg,
-                            mmApp.ApplicationName,
-                            MessageBoxButton.YesNo,
-                            MessageBoxImage.Asterisk,
-                            MessageBoxResult.Yes);
+                        try
+                        {
+                            Model.Window.ShowStatus("Packing HTML File. This can take a little while.",
+                                mmApp.Configuration.StatusMessageTimeout, FontAwesomeIcon.CircleOutlineNotch,
+                                color: Colors.Goldenrod, spin: true);
+                            
+                            var packager = new HtmlPackager();
 
-                        if (mbResult == MessageBoxResult.Yes)
-                            Model.ViewInExternalBrowserCommand.Execute(null);
+                            bool packageResult;                            
+                            if(sd.FilterIndex == 1)
+                                packageResult = packager.PackageHtmlToFile(sd.FileName, sd.FileName);
+                            else
+                            {
+                                folder = Path.GetDirectoryName(sd.FileName);
+                                if (Directory.GetFiles(folder).Any() &&                               
+                                    MessageBox.Show("The Html file and resources will be generated here:\r\n\r\n" +
+                                                    $"Folder: {folder}\r\n" +
+                                                    $"File: {Path.GetFileName(sd.FileName)}\r\n\r\n" +
+                                                    "Files already exist in this folder." +
+                                                    "Are you sure you want to generate Html and resources here?",
+                                        "Save As Html file with Loose Resources",
+                                        MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.Yes) == MessageBoxResult.No)
+                                        return;
+                                
+                                packageResult = packager.PackageHtmlToFolder(sd.FileName, sd.FileName);
+                            }
+
+                            if (packageResult)
+                                mmFileUtils.OpenFileInExplorer(sd.FileName);                          
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show(Model.Window, "Couldn't package HTML file:\r\n\r\n" + ex.Message,
+                                "Couldn't create HTML Package File");                            
+                        }
+                        finally
+                        {
+                            Model.Window.ShowStatus();
+                            Model.Window.ShowStatus("Packaged HTML File created.",
+                                mmApp.Configuration.StatusMessageTimeout);
+                        }
                     }
                 }
-
-                Model.Window.PreviewMarkdown(doc, keepScrollPosition: true);
             }, (s, e) =>
             {
-                if (Model.ActiveDocument == null || Model.ActiveEditor == null)
+                if (!Model.IsEditorActive)
                     return false;
                 if (Model.ActiveDocument.Filename == "untitled")
                     return true;
@@ -412,6 +563,67 @@ Do you want to View in Browser now?
             });
         }
 
+
+
+
+        public CommandBase CopyAsHtmlCommand { get; set; }
+
+        void CopyAsHtml()
+        {
+            CopyAsHtmlCommand = new CommandBase((parameter, command) =>
+            {
+                if (Model.ActiveEditor == null)
+                    return;
+
+                var editor = Model.ActiveEditor;
+                if (editor == null)
+                    return;
+
+                var markdown = editor.GetSelection();
+                if (string.IsNullOrEmpty(markdown))
+                    return;
+
+                var html = editor.RenderMarkdown(markdown);
+
+                // copy to clipboard as html
+                if (!ClipboardHelper.CopyHtmlToClipboard(html, markdown))
+                    Model.Window.ShowStatus(
+                        "Failed to copy Html to the clipboard. Check the application log for more info.",
+                        mmApp.Configuration.StatusMessageTimeout, FontAwesomeIcon.Warning, Colors.Firebrick);
+                else
+                    Model.Window.ShowStatus("Html has been copied to the clipboard.",
+                        mmApp.Configuration.StatusMessageTimeout);
+
+                editor.SetEditorFocus();
+                editor.Window.PreviewMarkdownAsync();
+            }, (p, c) => Model.IsEditorActive);
+
+        }
+
+        public CommandBase GeneratePdfCommand { get; set; }
+
+        void GeneratePdf()
+        {
+            // PDF GENERATION PREVIEW
+            GeneratePdfCommand = new CommandBase((s, e) =>
+            {
+                var form = new GeneratePdfWindow()
+                {
+                    Owner = mmApp.Model.Window
+                };
+                form.Show();
+            }, (s, e) =>
+            {
+                if (!Model.IsEditorActive)
+                    return false;
+                if (Model.ActiveDocument.Filename == "untitled")
+                    return true;
+                if (Model.ActiveEditor.EditorSyntax != "markdown")
+                    return false;
+
+                return true;
+            });
+        }
 
         #endregion
 
@@ -452,7 +664,8 @@ Do you want to View in Browser now?
                 Model.IsPreviewBrowserVisible = true;
 
                 Model.Window.ShowPreviewBrowser();
-            }, (p, c) => true);
+                Model.Window.PreviewMarkdownAsync();
+            });
         }
 
 
@@ -468,11 +681,84 @@ Do you want to View in Browser now?
 
                 if (!editor.RemoveMarkdownFormatting())
                 {
-                    Model.Window.SetStatusIcon(FontAwesome.WPF.FontAwesomeIcon.Warning, System.Windows.Media.Colors.Red);
-                    Model.Window.ShowStatus("Didn't remove formatting. No selection or document is not a Markdown document.",6000);
+
+                    Model.Window.ShowStatusError("Didn't remove formatting. No selection or document is not a Markdown document.");
                 }
-            }, (p, c) => true);
+            });
         }
+
+
+
+        public CommandBase DistractionFreeModeCommand { get; set; }
+
+        void DistractionFreeMode()
+        {
+            DistractionFreeModeCommand = new CommandBase((s, e) =>
+            {
+                Model.WindowLayout.SetDistractionFreeMode(!Model.IsFullScreen);
+            });
+        }
+
+
+        public CommandBase PresentationModeCommand { get; set; }
+
+        void PresentationMode()
+        {
+            // PRESENTATION MODE
+            PresentationModeCommand = new CommandBase((s, e) =>
+            {
+                Model.WindowLayout.SetPresentationMode(!Model.IsPresentationMode);
+            });
+        }
+
+
+
+        public CommandBase PreviewBrowserCommand { get; set; }
+
+        void PreviewBrowser()
+        {
+            var window = Model.Window;
+            var config = Model.Configuration;
+
+            PreviewBrowserCommand = new CommandBase((s, e) =>
+            {
+                var tab = window.TabControl.SelectedItem as TabItem;
+                var editor = tab?.Tag as MarkdownDocumentEditor;
+                if (editor == null)
+                    return;
+
+                Model.WindowLayout.IsPreviewVisible = Model.IsPreviewBrowserVisible;
+
+                config.IsPreviewVisible = Model.IsPreviewBrowserVisible;
+
+                if (!Model.IsPreviewBrowserVisible && Model.IsPresentationMode)
+                    PresentationModeCommand.Execute(null);
+
+
+                window.ShowPreviewBrowser(!Model.IsPreviewBrowserVisible);
+                if (Model.IsPreviewBrowserVisible)
+                    window.PreviewMarkdownAsync(editor);
+
+            }, null);
+
+
+        }
+
+        public CommandBase WordWrapCommand { get; set; }
+
+        void WordWrap()
+        {
+
+            // WORD WRAP COMMAND
+            WordWrapCommand = new CommandBase((parameter, command) =>
+                {
+                    //MessageBox.Show("alt-z WPF");
+                    Model.Configuration.Editor.WrapText = !mmApp.Model.Configuration.Editor.WrapText;
+                    Model.ActiveEditor?.RestyleEditor();
+                },
+                (p, c) => Model.IsEditorActive);
+        }
+
 
 
         #endregion
@@ -488,13 +774,13 @@ Do you want to View in Browser now?
                 string action = s as string;
                 var editor = Model.Window.GetActiveMarkdownEditor();
                 editor?.ProcessEditorUpdateCommand(action);
-            }, null);
+            }, (p, c) => Model.IsEditorActive);
         }
 
         public CommandBase CloseActiveDocumentCommand { get; set; }
 
         void CloseActiveDocument()
-        {            
+        {
             CloseActiveDocumentCommand = new CommandBase((s, e) =>
             {
                 var tab = Model.Window.TabControl.SelectedItem as TabItem;
@@ -503,11 +789,7 @@ Do you want to View in Browser now?
 
                 if (Model.Window.CloseTab(tab))
                     Model.Window.TabControl.Items.Remove(tab);
-            }, null)
-            {
-                Caption = "_Close Document",
-                ToolTip = "Closes the active tab and asks to save the document."
-            };
+            }, (p, c) => Model.IsEditorActive);
         }
 
 
@@ -526,7 +808,7 @@ Do you want to View in Browser now?
                 Model.Window.CloseAllTabs(except);
                 Model.Window.BindTabHeaders();
 
-            }, (p, c) => true);
+            }, (p, c) => Model.IsEditorActive);
         }
 
 
@@ -541,8 +823,11 @@ Do you want to View in Browser now?
             TabControlFileListCommand = new CommandBase((parameter, command) =>
             {
                 var tab = Model.Window.GetTabFromFilename(parameter as string);
+                if (tab == null)
+                    return;
+
                 tab.IsSelected = true;
-            }, (p, c) => true);
+            });
         }
 
 
@@ -552,13 +837,27 @@ Do you want to View in Browser now?
         {
             WindowMenuCommand = new CommandBase((parameter, command) =>
             {
-                var mi = Model.Window.WindowMenu;
+                var mi = Model.Window.MainMenuWindow;
                 mi.Items.Clear();
 
-                mi.Items.Add(new MenuItem { Header = "_Close Document", Command= Model.Commands.CloseActiveDocumentCommand  });
-                mi.Items.Add(new MenuItem { Header = "Close _All Documents", Command = Model.Commands.CloseAllDocumentsCommand });
-                mi.Items.Add(new MenuItem { Header = "Close All _But This Document", Command = Model.Commands.CloseAllDocumentsCommand, CommandParameter="AllBut" });
-                
+                mi.Items.Add(new MenuItem
+                {
+                    Header = "_Close Document",
+                    Command = Model.Commands.CloseActiveDocumentCommand
+                });
+                mi.Items.Add(new MenuItem
+                {
+                    Header = "C_lose All Documents",
+                    Command = Model.Commands.CloseAllDocumentsCommand,
+                    CommandParameter = "All"
+                });
+                mi.Items.Add(new MenuItem
+                {
+                    Header = "Close All _But This Document",
+                    Command = Model.Commands.CloseAllDocumentsCommand,
+                    CommandParameter = "AllBut"
+                });
+
                 var menuItems = Model.Window.GenerateContextMenuItemsFromOpenTabs();
                 if (menuItems.Count < 1)
                     return;
@@ -566,18 +865,73 @@ Do you want to View in Browser now?
                 mi.Items.Add(new Separator());
                 foreach (var menu in menuItems)
                 {
-                 
                     mi.Items.Add(menu);
                 }
 
                 mi.IsSubmenuOpen = true;
-                
-                mi.SubmenuClosed += (s,e) => ((MenuItem)s).Items.Clear();
-            }, (p, c) => true);
+                mi.Focus();
+
+                mi.SubmenuClosed += (s, e) => ((MenuItem) s).Items.Clear();
+            });
         }
 
-        
+        public CommandBase SetDictionaryCommand { get; set; }
 
+        void SetDictionary()
+        {
+            SetDictionaryCommand = new CommandBase((parameter, command) =>
+            {
+                var lang = parameter as string;
+                if (string.IsNullOrEmpty(lang))
+                    return;
+
+                if (!File.Exists(Path.Combine(App.InitialStartDirectory, "Editor", lang + ".dic")))
+                {                    
+                    Model.Window.ShowStatus("Downloading dictionary for: " + lang);
+                    if(SpellChecker.DownloadDictionary(lang))
+                        Model.Window.ShowStatus($"Downloaded dictionary: {lang}", Model.Configuration.StatusMessageTimeout);
+                    else
+                        Model.Window.ShowStatusError("Failed to download dictionary.");
+                }
+
+                Model.Configuration.Editor.Dictionary = lang;
+                SpellChecker.GetSpellChecker(lang, true); // force language to reset
+                Model.Window.ShowStatus($"Spell checking dictionary changed to: {lang}.",Model.Configuration.StatusMessageTimeout);
+            });
+        }
+
+
+
+        #endregion
+
+        #region Preview
+
+        public CommandBase EditPreviewThemeCommand { get; set; }
+
+        void EditPreviewTheme()
+        {
+            EditPreviewThemeCommand = new CommandBase((parameter, command) =>
+            {
+                var path = Path.Combine(App.InitialStartDirectory, "PreviewThemes",Model.Configuration.PreviewTheme);
+                mmFileUtils.OpenFileInExplorer(path);
+
+                mmFileUtils.ShowExternalBrowser("https://markdownmonster.west-wind.com/docs/_4nn17bfic.htm");
+            });
+        }
+
+
+        public CommandBase PreviewSyncModeCommand { get; set; }
+
+        void PreviewSyncMode()
+        {
+            PreviewSyncModeCommand = new CommandBase((parameter, command) =>
+            {
+
+                Model.Window.ComboBoxPreviewSyncModes.Focus();
+                WindowUtilities.DoEvents();
+                Model.Window.ComboBoxPreviewSyncModes.IsDropDownOpen = true;
+            });
+        }
 
         #endregion
 
@@ -598,17 +952,9 @@ Do you want to View in Browser now?
 
                 string path = Path.GetDirectoryName(editor.MarkdownDocument.Filename);
 
-                try
-                {
-                    Clipboard.SetText(path);
-                    Model.Window.ShowStatus($"Path copied to clipboard: {path}", 6000);
-                }
-                catch
-                {
-                    Model.Window.SetStatusIcon(FontAwesomeIcon.Warning, Colors.Red);
-                    Model.Window.ShowStatus("Clipboard failure: Failed copy foldername to clipboard.", 6000);
-                }
-            }, (p, c) => true);
+                if(ClipboardHelper.SetText(path))
+                    Model.Window.ShowStatus($"Path copied to clipboard: {path}", mmApp.Configuration.StatusMessageTimeout);                
+            });
         }
 
         #endregion
@@ -643,10 +989,116 @@ Do you want to View in Browser now?
                     url = mmApp.GetDocumentionUrl(topicId as string);
 
                 ShellUtils.GoUrl(url);
-            }, (p, c) => true);
+            });
         }
 
         #endregion
+
+        #region Git
+
+
+        public CommandBase OpenFromGitRepoCommand { get; set; }
+
+        void OpenFromGitRepo()
+        {
+            OpenFromGitRepoCommand = new CommandBase((parameter, command) =>
+            {
+
+                GitRepositoryWindowMode startupMode = GitRepositoryWindowMode.Clone;
+                var parm = parameter as string;
+                if (!string.IsNullOrEmpty(parm))
+                    Enum.TryParse(parm, out startupMode);
+                
+                var form = new GitRepositoryWindow(startupMode);
+                form.Owner = Model.Window;
+
+                var curPath = Model.Window.FolderBrowser.FolderPath;
+                if (string.IsNullOrEmpty(curPath))
+                {
+                    curPath = Model.ActiveDocument?.Filename;
+                    if (!string.IsNullOrEmpty(curPath))
+                        curPath = Path.GetDirectoryName(curPath);
+                }
+
+                if (!string.IsNullOrEmpty(curPath))
+                {
+                    if (startupMode == GitRepositoryWindowMode.AddRemote)
+                    {
+                        var root = GitHelper.FindGitRepositoryRoot(curPath);
+                        if (root != null)
+                            form.LocalPath = root;
+                    }
+                    else if (startupMode == GitRepositoryWindowMode.Create)
+                    {
+                        form.LocalPath = curPath;
+                    }
+                }
+
+                form.ShowDialog();
+
+            });
+        }
+
+
+        public CommandBase CommitToGitCommand { get; set; }
+
+        void CommitToGit()
+        {
+            // COMMIT TO GIT Command
+            CommitToGitCommand = new CommandBase( (parameter, e) =>
+            {
+                var file = parameter as string;
+                if (string.IsNullOrEmpty(file))
+                file = Model.ActiveDocument?.Filename;
+
+                if (string.IsNullOrEmpty(file))
+                    return;
+
+                var gh = new GitHelper();
+                var repo = gh.OpenRepository(file);
+                if (repo == null)
+                {
+                    Model.Window.ShowStatusError("This file or folder is not in a Git repository.");
+                    return;
+                }
+
+                var changes = gh.GetRepositoryChanges(repo.Info.WorkingDirectory);
+                if (changes.Count < 1)
+                    Model.Window.ShowStatusError($"There are no pending changes for this Git repository: {repo.Info.WorkingDirectory}");
+
+                Model.ActiveEditor.SaveDocument(Model.ActiveDocument.IsEncrypted);
+
+                var form = new GitCommitDialog(file, false); // GitCommitFormModes.ActiveDocument);
+                form.Show();
+            }, (s, e) => Model.IsEditorActive);
+        }
+
+        public CommandBase OpenGitClientCommand { get; set; }
+
+        void OpenGitClient()
+        {
+            OpenGitClientCommand = new CommandBase((parameter, command) =>
+            {
+                var path = parameter as string;
+                if (path == null)
+                {
+                    path = Model.ActiveDocument?.Filename;
+                    if(!string.IsNullOrEmpty(path))
+                        path = Path.GetDirectoryName(path);
+                }
+
+                if (string.IsNullOrEmpty(path))
+                    return;
+
+                if (!mmFileUtils.OpenGitClient(path))
+                    Model.Window.ShowStatusError("Unabled to open Git client.");
+                else
+                    Model.Window.ShowStatus("Git client opened.",mmApp.Configuration.StatusMessageTimeout);
+            }, (p, c) => !string.IsNullOrEmpty(Model.Configuration.Git.GitClientExecutable));
+        }
+
+        #endregion
+
 
         #region Static Menus Accessed from Control Templates
 
@@ -654,7 +1106,7 @@ Do you want to View in Browser now?
 
         static AppCommands()
         {
-            TabWindowListCommand = new CommandBase( (parameter, command)=>
+            TabWindowListCommand = new CommandBase((parameter, command) =>
             {
                 var button = parameter as FrameworkElement;
                 if (button == null) return;
@@ -667,10 +1119,164 @@ Do you want to View in Browser now?
 
                 button.ContextMenu.IsOpen = true;
                 button.ContextMenu.Closed += (o, args) => button.ContextMenu.Items.Clear();
-            },
-            (p, c) => true);
+            });
         }
 
+        #endregion
+
+        #region Sidebar
+
+        public CommandBase CloseLeftSidebarPanelCommand { get; set; }
+
+        void CloseLeftSidebarPanel()
+        {
+            CloseLeftSidebarPanelCommand = new CommandBase((parameter, command) =>
+            {
+                Model.Window.ShowFolderBrowser(hide: true);
+                Model.ActiveEditor?.SetEditorFocus();
+            });
+        }
+
+
+        public CommandBase OpenLeftSidebarPanelCommand { get; set; }
+
+        void OpenLeftSidebarPanel()
+        {
+            OpenLeftSidebarPanelCommand = new CommandBase((parameter, command) =>
+            {
+                Model.Window.ShowLeftSidebar();
+            });
+        }
+
+        public CommandBase CloseRightSidebarPanelCommand { get; set; }
+
+        void CloseRightSidebarPanel()
+        {
+            CloseRightSidebarPanelCommand = new CommandBase((parameter, command) =>
+                {
+                    Model.Window.ShowRightSidebar(hide: true);
+                    Model.ActiveEditor?.SetEditorFocus();
+                });
+        }
+
+        public CommandBase ShowFolderBrowserCommand { get; set; }
+
+
+        void ShowFolderBrowser()
+        {
+            // SHOW FILE BROWSER COMMAND
+            ShowFolderBrowserCommand = new CommandBase((s, e) =>
+            {
+                mmApp.Configuration.FolderBrowser.Visible = !mmApp.Configuration.FolderBrowser.Visible;
+                mmApp.Model.Window.ShowFolderBrowser(!mmApp.Configuration.FolderBrowser.Visible);
+            });
+        }
+
+
+        #endregion
+
+        #region Commands
+
+
+
+        public CommandBase SettingsCommand { get; set; }
+
+        void Settings()
+        {
+            // Settings
+            SettingsCommand = new CommandBase((s, e) =>
+            {
+                try
+                {
+                    var file = Path.Combine(mmApp.Configuration.CommonFolder, "MarkdownMonster.json");
+
+                    // save settings first so we're looking at current setting
+                    Model.Configuration.Write();
+
+                    string fileText = File.ReadAllText(file);
+                    if (!fileText.StartsWith("//"))
+                    {
+                        fileText = "// Reference: http://markdownmonster.west-wind.com/docs/_4nk01yq6q.htm\r\n" +
+                                   fileText;
+                        File.WriteAllText(file, fileText);
+                    }
+
+                    Model.Window.OpenTab(file, syntax: "json");
+                }
+                catch
+                {
+                    if (mmApp.Configuration.CommonFolder != mmApp.Configuration.InternalCommonFolder)
+                    {
+                        mmApp.Configuration.CommonFolder = mmApp.Configuration.InternalCommonFolder;
+                        Settings();
+                    }
+                    else
+                    {
+                        var msg = $@"We couldn't load the configuration file.
+
+Please check that the configuration folder for Markdown Monster exists. The default location is:
+
+{FileUtils.ExpandPathEnvironmentVariables("%appdata%\\Markdown Monster")}
+
+and that the file contains `markdownmonster.json`. You should also remove `commonfolderlocation.txt` if it exists and points at an invalid location.
+
+If all this fails shut down Markdown Monster, rename or delete `MarkdownMonster.json` and `commonfolderlocation.txt` (if it exists) and restart Markdown Monster.
+
+We're now shutting down the application.
+";
+                        MessageBox.Show(msg, mmApp.ApplicationName, MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+
+                        App.Current.Shutdown();
+                    }
+
+                }
+            });
+        }
+
+
+
+
+
+
+        public CommandBase ViewInExternalBrowserCommand { get; set; }
+
+        void ViewInExternalBrowser()
+        {
+            // EXTERNAL BROWSER VIEW
+            ViewInExternalBrowserCommand = new CommandBase((p, e) =>
+            {
+                if (Model.ActiveDocument == null) return;
+
+                Model.ActiveDocument.RenderHtmlToFile();
+                mmFileUtils.ShowExternalBrowser(Model.ActiveDocument.HtmlRenderFilename);
+            }, (p, e) => Model.IsEditorActive);
+        }
+
+
+        public CommandBase ViewHtmlSourceCommand { get; set; }
+
+        void ViewHtmlSource()
+        {
+            ViewHtmlSourceCommand = new CommandBase((p, e) =>
+            {
+                if (Model.ActiveDocument == null) return;
+                Model.ActiveDocument.RenderHtmlToFile();
+                Model.Window.OpenTab(Model.ActiveDocument.HtmlRenderFilename);
+            }, (p, e) => Model.IsEditorActive);
+        }
+
+
+        public CommandBase PrintPreviewCommand { get; set; }
+        
+
+        void PrintPreview()
+        {
+            PrintPreviewCommand = new CommandBase(
+                (p, e) => Model.Window.PreviewBrowser.ExecuteCommand("PrintPreview"),
+                (p, e) => Model.IsEditorActive);
+
+        }
         #endregion
     }
 }

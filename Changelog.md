@@ -1,24 +1,323 @@
-<img src="https://github.com/RickStrahl/MarkdownMonster/raw/master/Art/MarkdownMonster_Icon_128.png" align="right"/>
+<img src="MarkdownMonster/Assets/MarkdownMonster_Icon_256.png" width=100 align="right" />
 
 # Markdown Monster Change Log 
-<small>[download latest version](https://markdownmonster.west-wind.com/download.aspx) &bull; [install from Chocolatey](https://chocolatey.org/packages/MarkdownMonster) &bull; [Web Site](https://markdownmonster.west-wind.com)</small>
+
+[![download](https://img.shields.io/badge/Download-Installer-blue.svg)](https://markdownmonster.west-wind.com/download.aspx)
+[![Chocolatey](https://img.shields.io/chocolatey/dt/markdownmonster.svg)](https://chocolatey.org/packages/MarkdownMonster)
+[![Web Site](https://img.shields.io/badge/Markdown_Monster-WebSite-blue.svg)](https://markdownmonster.west-wind.com)
+
+### 1.11.12
+<small>June 7th, 2018</small>
+
+* **Improved Folder Browser Preview**  
+The Folder Browser now supports 'previewing' of Markdown documents in place with editor and preview. Single click opens the editor and previewer in 'preview mode'. If another document is accessed the tab goes away. If you edit the 'preview' tab (italic tab header) the tab is converted into an active tab that behaves like other editable tabs. Image previews now re-use open previews. Overall faster preview experience.
+
+* **Updated Save as HTML Options**
+Added another new feature to Save As HTML to export as HTML document with all dependencies provided as loose resources in a folder. Fixed a number of inconsistencies and missing dependencies.
+
+* **Open Git Remote in Browser**  
+The Commit dialog now has another option - if there's a Remote associated with the current repository, you can now open the remote in the Web browser. Jumps to the repository root on Github or Bitbucket etc. as long as the URL can just remove the HTTP URL `.git` extension.
+
+* **File Operation in Commit Dialog**  
+You can now open a file in the commit dialog in Explorer and delete the file on disk. The context menu also is actually context sensitive. Commit dialog now also has new button to link to the 
+
+* **Explicit Paste Image option on Editor Context Menu**  
+The editor's context menu now shows **Paste Image** if an image is on the clipboard. Text shows as Paste and if no content is present the option is disabled.
+
+* **Add File Information to Image Preview**  
+The image preview tab now displays image name, file size and dimensions below the image.
+
+* **Fix: Remembered Documents and Startup Position**  
+Fixed issue where remembered document on startup would not remember their line position through multiple starts.
+
+* **Fix: Tab Order Preserved for Open Documents on Restart**   
+Fixed issue where tabs were not ordering the same as during shutdown when restarting MM.
+
+* **Fix: Dirty State when Spell Checking**  
+Fixed dirty state update when selecting a misspelling correction on a clean document.
+
+* **Fix: Blank Preview on Startup**  
+Fix occasional issue with blank previewer when MM starts. Force focus.
+
+* **Markdown Monster .NET Minimum Version is now 4.6.2**  
+Due to some API changes in third party dependencies along with issues in DPI Scaling, Markdown Monster now requires .NET 4.6.2 to run. Previously versions down to 4.5.2 were supported.
+
+<h4 style="color: firebrick">v1.11.12 Breaking Changes</h4>
+This update has breaking changes related to addins. When updating to a newer version you may see addin-load failures. If that's the case uninstall and reinstall the affected addins.
 
 
-### 1.8.16
-*<small>not released yet</small>*
+### 1.11.8
+<small>May 30th, 2018</small>
+
+* **Save As Packaged HTML File**  
+You can now save the current document as a self-contained HTML document that includes all dependency resources embedded inside of the HTML document itself. While this document is rather large, the document is completely portable as it embeds images, css and fonts directly. Other options include **View in Browser** (from preview) and then **Save As Html** to save loose resources in addition to HTML.
+
+* **Preview Tab to preview rendered Markdown and Images on click**  
+There's a new `MainWindow.OpenBrowserTab()` method that allows for opening a preview tab in the browser that can display local or Web based content in a browser as a Preview window. The Preview tab is temporal - it's visible only until navigating to another file and then released. The preview tab is now used internally for previewing images, Markdown and HTML files in the Folder browser.
+
+* **Create Git Repository and Add Remote**  
+Added support for creating GitHub repositories and adding a new repository as a remote to an existing local repo. Options are available under the **File->Git** submenu.
+
+* **Add Push to Git Repository to Commit Dialog**  
+In addition to the the **Commit and Push** button in the dialog, you can now also explicitly push to the remote, when there are no files to commit.
+
+* **Fix: Clipboard Assignment Crashes**  
+Logs indicate a number of people have issues with Clipboard access, specifically setting values on the clipboard - both during editing and also from explicit clip assignments for URLs, commands etc. All set operations are not exception bracketed so while ops may still fail they won't crash MM.
+
+* **Fix: Document Outline Crash when empty Doc is open**  
+Fixed issue with the Document Outline crashing when an empty document was open.
+
+### 1.11.4
+<small>May 21th, 2018</small>
+
+* **New Preview Browser Tab for Images and Url Previewing**  
+Added a new Preview Browser tab that is now used for previewing images and URLs. Images from the Folder Browser are now previewed in this tab. The tab is a 'temporary' tab that is visible only when directly rendered - it goes away when another tab is selected and re-opened as needed. This replaces the previous image hover. Note: That although images preview you can still drag images into the previously active document from the folder browser.
+
+* **Snippets Addin integrated into MM Core**   
+Moved the Snippets addin into the core MM Solution so it's always up to date and synced to matching dependencies.
+
+* **Fix: Window Menu Shortcut Keys**  
+Fix Window menu mnemonic keys that didn't allow for shortcuts to work.
+
+* **Fix: RPC Weblog EndPoint Discovery for Medium**  
+Fix endpoint discovery for medium with a fixed URL. Also adjusted Wordpress endpoint discovery.
+
+* **Internals: Update depencenies**  
+Update all dependencies to latest releases - except for LibGit2Sharp which switched to .NET Core 2.0 assemblies and results in a splattering a huge amount of runtime dependencies into project. Waiting to target .NET 4.7.2 to not require those dependencies.
+
+* **Addins: Failed Addins Removed**  
+If addins fail to load they are removed from the addin list and removed on the next pass. This is a temporary situation as we work out the changeover to new dependencies, so that the same warnings don't keep popping up each time you launch if you didn't uninstall explicitly.
+
+<h4 style="color: firebrick">v1.2.8 Breaking Changes</h4>
+This update has breaking changes related to addins. When updating to a newer version you may see addin-load failures. If that's the case uninstall and reinstall the affected addins.
+
+* **Addins: Addins have to be updated**   
+There have been a few underlying API changes and support libraries have been updated that require all addins to be recompiled. Note that the WebLog, Screen Capture and Snippet addins are built-in and not affected.
+
+### 1.11  
+<small>May 16th, 2018</small>
+
+* **Add Git Commit Dialog**  
+Added a new Git Commit dialog that allows committing and pushing the active file as well as all pending files to a Git repository. This replaces the previous hotkey only command with a more visual approach that provides many more options. Ctrl-Enter in the dialog can be used to quick commit similar to the old behavior.
+
+* **Git File Status in File Browser**  
+The Folder browser now shows Git status information via icons. There are also a new option to undo changes on the file context menu.
+
+* **Open Git Client From Document or Folder Browser Folder**  
+You can now configure an external Git Client and open it from the Folder Browser or the Open Document's Tab Context menus.
+
+* **Add Clone Git Repository**  
+Added option to clone a Git repository to a local folder to make it easier to retrieve Git content for local editing. Also added a new **File -> Git** menu that houses this option and **Commit to Git** (same behavior as the Tab context menu). **Requires:** that Git and Git Credential Manager (for private or authenticated repos) are installed.
+
+* **Add Git Pull Support**  
+Add the ability to pull data from the remote origin into the current Git repository. There aren't any options for specific branches and pull does a merge commit. Feature is available on the Git Commit Dialog.
+
+* **Add Commit Dialog Option to Leave Window Open after Commit**  
+There's now a persisted option that optionally allows you to leave the Git Commit window open if there are still pending files to be committed. This makes it easier to selectively commit files into multiple commits.
+
+* **Add VS Code Dark Editor Theme**  
+Added a new VS Code Dark editor theme that is similar to VS Code's default editor theme. Due to differences in the rendering engines between ACE and Monaco the styling isn't identical but fairly close.
+
+* **Open Markdown From Url**  
+Added the ability to open a Markdown document from the Web via a URL. This feature understands and fixes up Github and BitBucket Markdown documents, Gists and Microsoft Docs Documentation URLs and allows for de-referencing of relative image links as an option. Also optionally fixes up image links to absolute Web URLs so images can display in the preview browser.
+
+* **Add support for DocFx/Microsoft Docs Include Files in Preview**  
+The Preview can now optionally render DocFx style includes in the form of `[!include[title](fileName)]` linked files to render. Relative files will automatically be included and are rendered inline. There's an option that turns this behavior on and off: `markdownOptions.ParseDocFxIncludeFiles`. More DocFx features will be added in near-future updates.
+
+* **Add Drag and Drop File Moving in Folder Browser**   
+You can now drag and drop files to new folders in the folder browser.
+
+* **Allow Selection and Downloading of Spell Check Dictionaries**  
+The Spell Check selector option in the control box now allows switching of spell checking dictionaries. It also allows for downloading of alternate dictionaries that are not pre-installed from an online list.
+
+* **Main UI Theme Switching Improvements**  
+Switching between light and dark themes now automatically assigned a default editor theme to match the light or dark theme. Theme switches prompt for a restart and if you opt in automatically shuts down and restarts Markdown Monster.
+
+* **Option to turn off Markdown Bullet AutoCompletion**  
+There have been quite a few complaints around the auto-completion bullet editing in Markdown text and now there's an option to disable it. In fact, bullet auto-complete is now off by default and has to be enabled explicitly with `Editor.EnableBulletAutoCompletion`.
+
+* **Add MaxDocumentOutlineLevel Configuration Value**  
+You can now specify the Max Outline level displayed in the Document Outline panel. This value also affects the embeddable Table of Contents that can be generated from the document outline. The value can be interactively set in the Document Outline's Context Menu.
+
+* **Add Undo/Redo to Editor Context Menu**  
+Added Undo and Redo options to the editor's context menu as they were missing.
+
+* **Open Markdown files linked in Preview in Editor**   
+If you have a link in your markdown to another Markdown file the previewer now detects that the file is a local Markdown file and opens it in the editor.
+
+* **Addin: Intercept Preview Link Clicks**  
+Addins now have a new `Addin.OnPreviewLinkNavigation()` to intercept navigation and handle custom link processing in the preview. Return `true` to override or `false` to let the default link processing work.
+
+* **Editor Enhancements**  
+Updated to the latest version of ACE Editor which is noticeably faster and more stable. A number of cursor and scrolling related issues are addressed. Updated Twilight and the new VS Code Dark Theme.
+
+* **Add Editor LineHeight Configuration Switch**  
+Added configuration switch to allow setting the editor text line height to separate or tighten up the spacing between text. Default line height has been bumped up to 1.3 from 1.2 which gives a little bit more space between lines.
+
+* **Editor Configuration Consolidation**   
+Internally consolidated all the editor styling options into a single `Editor` configuration section that forces the editor to restyle based on editor configuration settings. Previously all of these settings were individually set. This makes it easier for addin authors to modify editor settings and simply call `Model.Configuration.RestyleEditor()` after making changes to the configuration settings.
+
+* **Fix Git Clone with Path with Spaces**  
+Fixed bug for paths with spaces in Git Clone operation.
+
+* **Fix: Clear document stats when last tab is closed**  
+Fixed issue where when the last tab was closed the document stats were not cleared.
+
+* **Fix Folder Browser New File/Folder Editing**  
+Fixed regression introduced by file search in the list that would interfere with adding new files and folder. New files and folders now properly get inserted into the hierarchy order, and show the appropriate icon and git status.
+
+* **Fix: Code Snippet Wrapping for Printing and PDF Generation**  
+Fixed Code Snippet wrapping so that code snippets wrap rather than scroll when printing or generating a PDF file.
+
+* **Fix: Miscellaneous Addin-Manager Issues**  
+Fix update button display. Fix installed version number display.  
+Fix list rendering issues in the Addin list. Fix version comparison logic to determine whether an update is available.
+
+* **Fix: Binding issues with various Menu options when no Documents are open**  
+Fixed various issues with the menu when no document is open so that a number of options are not available. All commands are now explicitly rechecked when documents are opened or closed (via Tabs).
+
+* **Fix: UrlEncoding in Paste URL Dialog for Local Files**  
+Fix the Paste URL dialog when embedding relative file links to be URL Encoded.
+
+* **Fix: UI Inconsistencies**  
+Fixed a number of left over UI inconsistencies that made it into earlier 10.x published releases. A few places where background colors and control heights were off. Refactored a number of common control settings to global scope for better overall consistency.
+
+* **Fix: Document Outline Visibility**  
+Document outline would still be visible after unchecking the Document Outline option in the menu if enabled on startup. Outline is now properly hidden.
+
+* **Fix: Folder Browser New File Adding**  
+Fixed new file editing behavior that would get corrupted by the file search behavior in the tree.
+
+### 1.10
+*<small>March 27th, 2018</small>*
+
+* **Document Outline**  
+There's a new Document Outline feature (preview) that provides a two-way sync between the active document and the outline. The outline shows headers (h1-h4). You can click on bookmark links, and the outline stays in sync when you scroll the document.
+
+* **Table of Content Generator**  
+As part of the Document Outline display, there's an option to generate a TOC and embed it into a Markdown document at the cursor position. The TOC is created a Markdown list with links and can be re-generated on demand.
+
+* **Document Outline Context Menu to get Link ID onto Clipboard**  
+There's now a context menu on each document outline item to copy the hash ID to the location in the document. Useful if you need to link to another part of the document.
+
+* **Fix up spaces in Editor Markup Operations**   
+Editor markup operations like the bold, italic, underscore, small etc. now automatically handle fixing up leading spaces so if you select ` selected words ` (note the leading and/or trailing spaces that are selected) the tag is updated as ` **selected words** ` (space before and after the `**`) effectively transposing the unintended spaces in the markup.
+
+* **Add Syntax Selection Dropdown on Status Bar**  
+The status bar now displays the active syntax scheme and allows you to select a different syntax for a given file.
+
+* **Keyboard Auto Search for starting Letters in Folder Browser**  
+You can now type in a few letters to jump to the first matching file similar to the way Explorer finds files.
+
+* **Folder Browser File System (File Watcher)**  
+The folder browser now displays file system updates in the folder browser. If you externally add, delete or rename a file the external changes are reflected in the Folder Browser.
+
+* **Folder Browser `IgnoreFolders` and `IgnoreFileExtensions`**  
+Options to filter the folder browser display for certain folder and file extensions. Folders default `.git, node_modules` and extensions to `.saved.bak`. Values can be customized in Settings.
+
+* **Double Click Editor/Preview Separator to Zoom Preview**  
+You can now double click the separator between the Editor and Preview to zoom the preview for a quick way to browse read/only content. The Sidebar remains on the left of the display to double click and restore the original width.
+
+* **Edit Preview Template from Preview Browser**  
+You can now directly jump to the Preview template that's active and edit the HTML/CSS that makes up that template in the Preview Browser using the Preview Browser's context menu. The link also opens the Preview Theme Editing documentation.
+
+* **Main Content Area UI Refactoring**  
+The main content UI area has been refactored to encapsulate the editor and preview pane in a single layout panel. Tabs now stretch across the entire content and preview area to avoid excessive tab crowding especially on small displays. Internally the render logic has been refactored to make the UI easier to manage in code via bindings and simpler property access and allow for more modular layouts that can be driven from Addins including support for adding UI panels.
+
+* **Addin Support for adding Left Sidebar Tab Items**  
+Addins can now implement a `AddSidebarPanelTabItem()` method to add a new sidebar panel which becomes a tabbed item alongside the File and Folder Browser. This allows for custom list panels for additional functionality like Git interaction, custom documentation solutions and document navigation and so on.
+
+* **Left and Right Side Bar Hamburger Menu for Slideout Menu**   
+The left sidebar (Folder Browser) and right sidebar - if it has content - now have dedicated hamburger icons on their respective sides to slide out the sidebars when active. This makes the sidebars opening operation more discoverable. Additionally you can now drag to open and close the sidebars. Also remove the open icons from the main toolbar and window control menu since the icons are more logical.
+
+* **Addin Support for a Right Tab Sidebar**  
+There's now also a new Right Side bar which can contain tabs to allow another avenue of providing additional UI for documents. Like the left sidebar, you can add tab pages to the layout to add UI.
+
+* **MarkdownDocumentEditor Identifier and Properties Collections**   
+The MarkdownDocumentEditor instance now has a collection of Properties that can be attached to the editor to allow you to associate custom state to an editor instance. This allows Addins to capture state when a specific tab is activated via `Model.ActiveEditor.Tag.Properties["state"]`. `Identifier` is a new string field that allows adding a custom designation for easy checking.
+
+* **More Markdown Rendering Configuration Options**  
+Added additional configuration switches to the Markdown configuration to allow for more complete Markdown extension support as provided by [MarkDig](https://github.com/lunet-io/markdighttps://github.com/lunet-io/markdig). Added support for [Custom Containers fenced `<div>` blocks](https://github.com/lunet-io/markdig/blob/master/src/Markdig.Tests/Specs/CustomContainerSpecs.md) and [Generic Markdown Attributes](https://github.com/lunet-io/markdig/blob/master/src/Markdig.Tests/Specs/GenericAttributesSpecs.md) and added explicit properties for most of MarkDig's extension features.
+
+* **Refactored the Preview Browser to allow pluggable Preview Controls via Addins**  
+Consolidated the preview rendering via an `IPreviewBrowser` interface and a control that hosts the preview. This greatly reduced code duplication for preview handling in the internal and external viewers, but now also allows pluggable previewers in Markdown Monster. There's a new Addin function: `GetPreviewBrowserUserControl()` that allows replacement of the stock preview browser control with a custom control that implements `IPreviewBrowser`.
+Example: [Chromium Preview Addin (preview)](https://github.com/RickStrahl/ChromiumPreview-MarkdownMonster-Addin)
+
+* **Post Date for Weblog Post Meta Data**  
+The Weblog post meta data now stores the original post date, which also allows for modifying the post date to a new date when reposting **if** the Weblog service supports that feature.
+
+* **Addins: Support for Read Only Editor**   
+You can now open a new editor tab in Read Only mode which can't be edited but can still be viewed and scrolled. Also added a double click handler in read only mode that triggers an `OnNotifyAddin` event for `ReadOnlyDoubleClick` that can be used to take action on the double click (like open a new window).
+
+* **DisableSplashScreen Configuration Setting**  
+You can now optionally disable the splash screen from firing up when starting Markdown Monster.
+
+* **New Markdown Monster Logo**  
+Yup we have a new image logo for the startup banner and about page.
+
+* **Fix: Quicker Save Behavior**   
+Save operations previously were slightly delayed and didn't show the document as saved immediately. Made file save explicit rather than triggering on dirty flag update for much more responsive save and UI feedback.
+
+* **Fix: Sort Order in Folder Browser**  
+Fix sort order to work with lower case sorting so folders or files that start with `_` sort to the top and lower and upper case file names are not mixed up in sorting.
+
+* **Fix: Weblog Post Download with FrontMatter Header**  
+Fix issue where Weblog posts that contain FrontMatter headers would double up the FrontMatter and title headers. Fix checks for FrontMatter in downloaded post and if found just display the raw post retrieved with the original FrontMatter and Markdown formatting.
+
+* **Fix: Preview Theme Code Block Rendering Wrap**   
+Fixed preview themes so that code blocks do not wrap in the previewer and exported HTML output. Affected Darkhan, Github and Westwind themes.
+
+* **Fix: Table Importer with HTML Tables**  
+Fix table importer context menu to find tables inside of the Editor. Fix import behavior if table uses upper case tag names.
+
+* **Fix: File Modified Dialog Behavior**  
+Fixed prompt behavior when a file was changed when not focused on the editor and returning. Previous behavior **always** popped up a dialog for the file change. New behavior automatically updates the document **if there are not changes pending in the editor**. This avoids numerous dialog popups that are effectively unnecessary.
+
+* **Fix: Scroll Stutter at the top of the Document**  
+Fixed issue where initial scroll operation from the top of the document would get 'stuck' and require explicit cursor or slow scroll movement. Fixed by changing the top window scroll detection logic.
+
+* **Fix: Find/Replace Box Formatting**   
+Fix styling of the Find/Replace box which was broken after a recent update of Ace Editor. The box now also reverts closer to Ace Editor's default behavior which includes responsive auto-sizing which was previously disabled.
+
+* **Fix: #Hash Links when generating PDF Output**  
+Previously hash links to HTML Anchors or Ids (such as a table of content) were not working in PDF output. Output now properly supports internal document links.
+
+* **Fix: Fix ignored files in Folder Browser**  
+The folder browser now properly ignores on the `ignoreFileExtensions` setting, for new, externally created files that are updated in the browser view.
+
+* **Fix: Recent Files Menu Clears**  
+Fixed issue where the Recent Files menu would clear if more than a certain number of files are present.
+
+* **Fix: Weblog Keywords and Categories Trimming**  
+Fixed issue where keywords and categories on posted blog posts where not properly trimmed if spaces were present in the comma-delimited list.
+
+* **Fix: Internal Links for PDF Output**  
+PDF output now can properly display local links inside of the document. Changed behavior of the exported HTML document by exporting to the .md file's folder and removing the `Base` tag which was interfering with local links.
+
+* **Fix: Code Wrapping in the Previewer**   
+Fixed how code displays by overriding default Bootstrap styles that wrap code. Override forces horizontal scrollbars onto code blocks.
+
+
+### 1.9
+*<small>January 24, 2018</small>*
+
+* **Version Rollup Release**  
+This release is a version Rollup release that combines all the recent additions into a point release.
 
 * **Add Table Editor support for Paste Table**   
 You can now paste a table from HTML, or Pipe or Grid Tables into the table editor. Note if the table is heavily formatted it'll likely end up as mostly HTML, but simple formatted tables with links, images and simple markup are converted. 
 
 * **Edit Table in Editor now also supports HTML Tables**  
-The editor context menu now allows editing of HTML Tables inside of the table editor. Inside of a table in the editor, right click (or use the Windows dropdow key with the cursor selected inside of table) to open the table in the editor. Support for complex HTML inside of cells is limited to plain text, links, images, bold and italic.
+The editor context menu now allows editing of HTML Tables inside of the table editor. Inside of a table in the editor, right click (or use the Windows drop down key with the cursor selected inside of table) to open the table in the editor. Support for complex HTML inside of cells is limited to plain text, links, images, bold and italic.
 
+* **Performance improvements in Table Editor**  
+Reworked the custom layout used to edit table rows that makes rebinding of table rows and columns much more efficiently than previously.
 
-### 1.8.15
-*<small>January 16th, 2018</small>*
+* **Start Screen Improvements**  
+Fix recent file list on the Start Screen to refresh and accurately show recent files. Also tweaked the layout of the Recent Files list to be more easily readable and added tooltips to links to get full file names.
 
 * **Add Open Documents Dropdown for Tab Overflow**  
-Changed the tab layout so when there are more tabs than can be displayed, a dropdown shows a menu with all open files that can be selected.
+Changed the tab layout so when there are more tabs than can be displayed, a drop down shows a menu with all open files that can be selected.
 
 * **Add Window Menu to show all open Documents**   
 Add standard Window menu to show all open documents and allow manipulation of the open documents (Close open tab, Close all, Close all but).
@@ -34,11 +333,6 @@ Fix a number of small folder browser inconsistencies related to adding new files
 
 * **Fix: Command Line Startup with Folder**  
 Fix bug where command line startup with a folder name would not open the folder in the folder browser properly.
-
-
-### 1.8.12
- *<small>January 9th, 2018</small>* 
- ##### File System and Folder Browser Update
 
 * **Add Recent Folder List in Folder Browser**   
 The folder browser now has an icon to show and re-select recently opened folders. Recent folders are also shown on the Recent Files drop down.
@@ -82,11 +376,6 @@ Images dragged from Windows Explorer now drop at the current cursor position in 
 * **Fix: Incorrect Drag Behavior and Scrollbar Interaction in Folder Browser**   
 Fix funky drag behavior when an item is selected and trying to scroll the scrollbar on the file list. Fixed by explicitly checking for the item being selected being dragged rather than the entire tree.
 
-### 1.8.8
-*<small>December 28th, 2017</small>*
-##### Table Editor Update
-
-
 * **[New two-way Table Editor](https://markdownmonster.west-wind.com/docs/_53a0pfz0t.htm)**  
 Added table editor dialog that allows for creation of Markdown (and Html) tables interactively. A new dialog provides column based data entry with tabbable fields along with the ability to easily add and delete rows and columns. Output can be generated as either Markdown or HTML and you can use the Editor context menu's 'Edit Table' option to edit or reformat a table.
  
@@ -98,10 +387,6 @@ You can now use `Ctrl-Tab` and `Ctrl-Shift-Tab` to flip more easily across the o
 
 * **Paste Code Dialog Picks up Code from ClipBoard**   
 The Paste Code Dialog (alt-c) now tries to pick up code from the clipboard and displays it for editing and then pasting - if no code selection is active in the editor. This can provide an optimized workflow: Copy code to clipboard from code editor, switch to MM, press `alt-c`, type syntax code (ie. css, html, csharp), press enter and code is pasted properly into markdown. 
-
-### 1.8.4
-*<small>December 20th, 2017</small>*
-#### Editor Features Update
 
 * **Remove Markdown Formatting**   
 Added menu option and Ctrl-Shift-Z shortcut to remove Markdown formatting from a selection of text in a Markdown document.
@@ -127,9 +412,8 @@ Fixed behavior, so that if a selection is active, Shift-Del only deletes the act
 * **Fix: Crashes related to File Save Operations failing**   
 Fixed issue where async save operations would interfere with various file checks (for encryption and auto-save operations). Fixed with single code path and lock to prevent thread cross talk.
 
-### 1.8.0
+### 1.8
 *<small>December 4th, 2017</small>*
-##### Version Rollup Release
 
 * **Version Rollup Release**   
 This release is a version rollup release that combines all the recent additions into a point release.

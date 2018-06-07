@@ -46,6 +46,7 @@ using System.Security;
 
 namespace MarkdownMonster
 {
+    using System.Diagnostics;
     using AddIns;
 
     /// <summary>
@@ -71,6 +72,7 @@ namespace MarkdownMonster
                 _filename = value;
                 OnPropertyChanged();                
                 OnPropertyChanged(nameof(FilenameWithIndicator));
+                OnPropertyChanged(nameof(FilenamePathWithIndicator));
                 OnPropertyChanged(nameof(HtmlRenderFilename));
             }
         }
@@ -119,7 +121,7 @@ namespace MarkdownMonster
 
                 string path = Path.GetFileName(Path.GetDirectoryName(Filename));
 
-                return Path.GetFileName(Filename) + "  –  " + path  + (IsDirty ? "*" : ""); 
+                return Path.GetFileName(Filename) + (IsDirty ? "*" : "") + "  –  " + path ; 
             }
         }
 
@@ -131,6 +133,10 @@ namespace MarkdownMonster
         {
             get
             {
+
+                if (string.IsNullOrEmpty(Filename))
+                    return Filename;
+
                 return Path.Combine(
                     Path.GetDirectoryName(Filename),
                     Path.GetFileName(Filename) + ".saved.bak");
@@ -245,7 +251,8 @@ namespace MarkdownMonster
                     _IsDirty = value;
                     IsDirtyChanged?.Invoke(value);
                     OnPropertyChanged(nameof(IsDirty));
-                    OnPropertyChanged(nameof(FilenameWithIndicator));                    
+                    OnPropertyChanged(nameof(FilenameWithIndicator));
+                    OnPropertyChanged(nameof(FilenamePathWithIndicator));
                 }
             }
         }
@@ -486,14 +493,14 @@ namespace MarkdownMonster
         /// </summary>
         public void Close()
         {
-            if (File.Exists(HtmlRenderFilename))
-            {
-                try
-                {
-                    File.Delete(HtmlRenderFilename);
-                }
-                catch { /* ignore */ }
-            }
+            //if (File.Exists(HtmlRenderFilename))
+            //{
+            //    try
+            //    {
+            //        File.Delete(HtmlRenderFilename);
+            //    }
+            //    catch { /* ignore */ }
+            //}
             CleanupBackupFile();
         }
 
@@ -513,7 +520,7 @@ namespace MarkdownMonster
             {
                 try
                 {
-                    File.WriteAllText(filename, html, Encoding.UTF8);
+                    File.WriteAllText(filename, html, Encoding.UTF8);                    
                     written = 10;                    
                 }              
                 catch(Exception ex)
@@ -634,8 +641,8 @@ namespace MarkdownMonster
                 return false;
 
             lock (_SaveLock)
-            {
-                using (var fs = File.OpenRead(Filename))
+            {                
+                using (var fs = new FileStream(Filename, FileMode.Open,FileAccess.Read,FileShare.Read))
                 {
                     int count;
                     var bytes = new char[ENCRYPTION_PREFIX.Length];
@@ -756,13 +763,22 @@ namespace MarkdownMonster
         }
 
         /// <summary>
-        /// Renders the HTML to a file with a related template
+        /// Renders markdown from the current document using the appropriate Theme
+        /// Template and writing an output file. Options allow customization and 
+        /// can avoid writing out a file.
         /// </summary>
         /// <param name="markdown"></param>
         /// <param name="filename"></param>
         /// <param name="renderLinksExternal"></param>
+        /// <param name="theme">The theme to use to render this topic</param>
+        /// <param name="usePragmaLines"></param>
+        /// <param name="noFileWrite"></param>
         /// <returns></returns>
-        public string RenderHtmlToFile(string markdown = null, string filename = null, bool renderLinksExternal = false, string theme = null, bool usePragmaLines = false)
+        public string RenderHtmlToFile(string markdown = null, string filename = null,
+                                       bool renderLinksExternal = false, string theme = null,
+                                       bool usePragmaLines = false,
+                                       bool noFileWrite = false,
+                                       bool removeBaseTag = false)
         {
             string markdownHtml = RenderHtml(markdown, renderLinksExternal, usePragmaLines);
 
@@ -770,14 +786,14 @@ namespace MarkdownMonster
                 filename = HtmlRenderFilename;
 
             if (string.IsNullOrEmpty(theme))
-                theme = mmApp.Configuration.RenderTheme;
+                theme = mmApp.Configuration.PreviewTheme;
 
             var themePath = Path.Combine(Environment.CurrentDirectory, "PreviewThemes\\" + theme);
             var docPath = Path.GetDirectoryName(Filename) + "\\";
 
             if (!Directory.Exists(themePath))
             {
-                mmApp.Configuration.RenderTheme = "Dharkan";
+                mmApp.Configuration.PreviewTheme = "Dharkan";
                 themePath = Path.Combine(Environment.CurrentDirectory, "PreviewThemes\\Dharkan");
                 theme = "Dharkan";
             }
@@ -787,21 +803,41 @@ namespace MarkdownMonster
             {
                 themeHtml = File.ReadAllText(themePath + "\\theme.html");
                 themePath = themePath + "\\";
+
+                if (removeBaseTag)
+                {
+                    // strip <base> tag
+                    var extracted = StringUtils.ExtractString(themeHtml, "<base href=\"", "/>", false, false, true);
+                    if (!string.IsNullOrEmpty(extracted))
+                        themeHtml = themeHtml.Replace(extracted, "");
+                }                
             }
             catch (FileNotFoundException)
             {
                 // reset to default
-                mmApp.Configuration.RenderTheme = "Dharkan";
+                mmApp.Configuration.PreviewTheme = "Dharkan";
                 themeHtml = "<html><body><h3>Invalid Theme or missing files. Resetting to Dharkan.</h3></body></html>";
             }
+            
+            if (markdownHtml.Contains(" class=\"mermaid\""))
+            {
+                markdownHtml +=@"
+<script src=""https://cdnjs.cloudflare.com/ajax/libs/mermaid/7.1.2/mermaid.min.js""></script>
+<script>mermaid.initialize({startOnLoad:true});</script>
+";
+            }
+
             var html = themeHtml.Replace("{$themePath}", "file:///" + themePath)
                 .Replace("{$docPath}", "file:///" + docPath)
                 .Replace("{$markdownHtml}", markdownHtml);
 
             html = AddinManager.Current.RaiseOnModifyPreviewHtml( html, markdownHtml );
 
-            if( !WriteFile(filename, html))
-                return null;
+            if (!noFileWrite)
+            {
+                if (!WriteFile(filename, html))
+                    return null;
+            }
 
             return html;
         }

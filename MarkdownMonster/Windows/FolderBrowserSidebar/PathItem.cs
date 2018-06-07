@@ -5,7 +5,9 @@ using System.Drawing;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
+using LibGit2Sharp;
 using MarkdownMonster.Annotations;
+using MarkdownMonster.Utilities;
 using Westwind.Utilities;
 
 namespace MarkdownMonster.Windows
@@ -13,7 +15,7 @@ namespace MarkdownMonster.Windows
 	/// <summary>
 	/// Represents a file or folder in the Folder Browser side panel control.
 	/// </summary>
-	[DebuggerDisplay("{FullPath}")]
+	[DebuggerDisplay("Path: {FullPath}")]
 	public class PathItem : INotifyPropertyChanged
 	{
 		public string DisplayName
@@ -172,8 +174,20 @@ namespace MarkdownMonster.Windows
 		}
 
 
+        public FileStatus FileStatus
+        {
+            get { return _FileStatus; }
+            set
+            {
+                if (value == _FileStatus) return;
+                _FileStatus = value;
+                OnPropertyChanged(nameof(FileStatus));
+            }
+        }
+	    private FileStatus _FileStatus = FileStatus.Nonexistent;
 
-	    public ImageSource Icon
+
+        public ImageSource Icon
 	    {
 	        get => _icon;
 	        set
@@ -210,7 +224,7 @@ namespace MarkdownMonster.Windows
 
 		public override string ToString()
 		{
-			return this.DisplayName;
+			return DisplayName;
 		}
 
 		public event PropertyChangedEventHandler PropertyChanged;
@@ -232,6 +246,16 @@ namespace MarkdownMonster.Windows
                 Icon = FolderStructure.IconList.GetIconFromFile("folder.folder"); // special case
                 OpenIcon = FolderStructure.IconList.GetIconFromFile("folder.openfolder"); // special case
             }
-        }	
+        }
+
+        private GitHelper gitHelper = null;
+
+	    public void UpdateGitFileStatus()
+	    {
+            if (gitHelper == null)
+                gitHelper = new GitHelper();
+
+	        FileStatus = gitHelper.GetGitStatusForFile(FullPath);
+	    }
 	}
 }

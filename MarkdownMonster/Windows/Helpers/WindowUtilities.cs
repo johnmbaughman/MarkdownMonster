@@ -87,6 +87,27 @@ namespace MarkdownMonster.Windows
             return null;
         }
 
+
+        /// <summary>
+        /// Finds a type of element in the parent chain of an element
+        /// </summary>
+        /// <typeparam name="T">Type of Element to find</typeparam>
+        /// <param name="current">start element</param>
+        /// <returns></returns>
+        public static T FindAnchestor<T>(DependencyObject current)
+            where T : DependencyObject
+        {
+            do
+            {
+                if (current is T) return (T) current;
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+            while (current != null);
+
+            return null;
+        }
+
         /// <summary>
         /// Creates a keyboard shortcut from a 
         /// </summary>
@@ -142,14 +163,58 @@ namespace MarkdownMonster.Windows
             }
         }
 
+        #region Menus
+
+        /// <summary>
+        /// Invalidates a menu control and all of its subitems
+        /// by checking Command.IsEnabled property if a command exists
+        /// </summary>
+        /// <param name="menu"></param>
+        public static void InvalidateMenuCommands(System.Windows.Controls.Menu menu)
+        {
+
+            foreach (var item in menu.Items)
+            {
+                var mi = item as System.Windows.Controls.MenuItem;
+                if (mi == null)
+                    continue;
+
+                InvalidateSubmenuCommands(mi);
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="menuItem"></param>
+        public static void InvalidateSubmenuCommands(System.Windows.Controls.MenuItem menuItem)
+        {
+            if (menuItem == null)
+                return;
+
+            foreach (var item in menuItem.Items)
+            {
+                var mi = item as System.Windows.Controls.MenuItem;
+                if (mi == null)
+                    continue;
+
+                if (mi.Command != null)
+                    mi.IsEnabled = mi.Command.CanExecute(mi.CommandParameter);
+
+                if (mi.HasItems)
+                    InvalidateSubmenuCommands(mi);
+            }
+        }
+        #endregion
+
         #region Bitmap Conversions
 
-		/// <summary>
-		/// Converts a bitmap source to a bitmap
-		/// Make sure to dispose the bitmap
-		/// </summary>
-		/// <param name="source"></param>
-		/// <returns></returns>
+        /// <summary>
+        /// Converts a bitmap source to a bitmap
+        /// Make sure to dispose the bitmap
+        /// </summary>
+        /// <param name="source"></param>
+        /// <returns></returns>
         public static Bitmap BitmapSourceToBitmap(BitmapSource source)
         {
             Bitmap bmp = new Bitmap(
@@ -359,4 +424,5 @@ namespace MarkdownMonster.Windows
         Angular = 1,
         Raw = 2,
     }
+
 }

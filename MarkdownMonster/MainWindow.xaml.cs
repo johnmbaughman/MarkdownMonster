@@ -26,9 +26,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
@@ -46,12 +48,16 @@ using MahApps.Metro.Controls.Dialogs;
 using MarkdownMonster.AddIns;
 using MarkdownMonster.Utilities;
 using MarkdownMonster.Windows;
+using MarkdownMonster.Windows.PreviewBrowser;
 using Westwind.Utilities;
 using Binding = System.Windows.Data.Binding;
+using Brushes = System.Windows.Media.Brushes;
 using Clipboard = System.Windows.Clipboard;
+using Color = System.Windows.Media.Color;
 using ContextMenu = System.Windows.Controls.ContextMenu;
 using DataFormats = System.Windows.DataFormats;
 using DragEventArgs = System.Windows.DragEventArgs;
+using Image = System.Windows.Controls.Image;
 using MenuItem = System.Windows.Controls.MenuItem;
 using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
@@ -63,15 +69,12 @@ namespace MarkdownMonster
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
-    public partial class MainWindow : MetroWindow , IPreviewBrowser
+    public partial class MainWindow : MetroWindow
+        //, IPreviewBrowser
     {
         public AppModel Model { get; set; }
 
         private NamedPipeManager PipeManager { get; set; }
-
-
-      
-
 
         public IntPtr Hwnd
         {
@@ -88,33 +91,13 @@ namespace MarkdownMonster
 
         private DateTime invoked = DateTime.MinValue;
 
-        public List<RecentDocumentListItem> RecentDocumentList
-        {
-            get
-            {
-
-                var list = Model.Configuration.RecentDocuments.Take(5);
-                var docs = new List<RecentDocumentListItem>();
-                foreach (var doc in list)
-                {
-                    docs.Add(new RecentDocumentListItem
-                    {
-                        Filename = doc,
-                        DisplayFilename = mmFileUtils.GetCompactPath(doc, 70)
-                    });
-                }
-                return docs;
-            }
-
-        }
-
 
         /// <summary>
         /// Manages the Preview Rendering in a WebBrowser Control
         /// </summary>
-        public PreviewWebBrowser PreviewBrowser {get; set;}
+        public IPreviewBrowser PreviewBrowser { get; set; }
 
-        private PreviewBrowserWindow PreviewWindow;
+        //private PreviewBrowserWindow PreviewWindow;
 
         public PreviewBrowserWindow PreviewBrowserWindow
         {
@@ -127,801 +110,1255 @@ namespace MarkdownMonster
                     {
                         Owner = this
                     };
-                    //_previewBrowserWindow.Show();
                 }
 
                 return _previewBrowserWindow;
             }
         }
+
+
+        /// <summary>
+        /// The Preview Browser Container Grid that contains the
+        /// Web Browser control that handles the Document tied
+        /// preview. 
+        /// </summary>
+        public Grid PreviewBrowserContainer { get; set; }
+
         private PreviewBrowserWindow _previewBrowserWindow;
 
-        
-        
+
+        /// <summary>
+        /// The Preview Browser Tab if active that is used
+        /// for image and URL previews (ie. the Preview
+        /// without an associated editor)
+        /// </summary>
+        public TabItem PreviewTab { get; set;  }
+
+        private IEWebBrowserControl previewBrowser;
 
         public MainWindow()
-		{
-			InitializeComponent();
+        {
+            InitializeComponent();
 
-            
+
             Model = new AppModel(this);
-		    AddinManager.Current.RaiseOnModelLoaded(Model);
+            AddinManager.Current.RaiseOnModelLoaded(Model);
+            AddinManager.Current.AddinsLoaded = OnAddinsLoaded;
+
+            Model.WindowLayout = new MainWindowLayoutModel(this);
 
             DataContext = Model;
 
-			TabControl.ClosingItemCallback = TabControlDragablz_TabItemClosing;
+            TabControl.ClosingItemCallback = TabControlDragablz_TabItemClosing;
 
-			Loaded += OnLoaded;
-			Drop += MainWindow_Drop;
-			AllowDrop = true;
-			Activated += OnActivated;
-            
-			// Singleton App startup - server code that listens for other instances
-			if (mmApp.Configuration.UseSingleWindow)
-			{
-			    new TaskFactory().StartNew( () =>
-			    {
-			        // Listen for other instances launching and pick up
-			        // forwarded command line arguments
-			        PipeManager = new NamedPipeManager("MarkdownMonster");
-			        PipeManager.StartServer();
-			        PipeManager.ReceiveString += HandleNamedPipe_OpenRequest;
-			    });                
-			}
+            Loaded += OnLoaded;
+            Drop += MainWindow_Drop;
+            AllowDrop = true;
+            Activated += OnActivated;
 
-			// Override some of the theme defaults (dark header specifically)
-			mmApp.SetThemeWindowOverride(this);
+            // Singleton App startup - server code that listens for other instances
+            if (mmApp.Configuration.UseSingleWindow)
+            {
+                new TaskFactory().StartNew(() =>
+                {
+                    // Listen for other instances launching and pick up
+                    // forwarded command line arguments
+                    PipeManager = new NamedPipeManager("MarkdownMonster");
+                    PipeManager.StartServer();
+                    PipeManager.ReceiveString += HandleNamedPipe_OpenRequest;
+                });
+            }
 
-            PreviewBrowser = new PreviewWebBrowser(PreviewWebBrowserControl);
+            // Override some of the theme defaults (dark header specifically)
+            mmApp.SetThemeWindowOverride(this);
         }
 
 
         #region Opening and Closing
 
-		private void OnLoaded(object sender, RoutedEventArgs e)
-		{
+        private void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            LoadPreviewBrowser();
             RestoreSettings();
 
-		    OpenFilesFromCommandLine();
+            OpenFilesFromCommandLine();
 
             if (mmApp.Configuration.ApplicationUpdates.FirstRun)
-			{
-				if (TabControl.Items.Count == 0)
-				{
-				    try
-				    {
-				        string tempFile = Path.Combine(Path.GetTempPath(), "SampleMarkdown.md");
-				        File.Copy(Path.Combine(Environment.CurrentDirectory, "SampleMarkdown.md"), tempFile, true);
-				        OpenTab(tempFile);
-				    }
-				    catch (Exception ex)
-				    {
-				        mmApp.Log("Handled: Unable to copy file to temp folder.", ex);
-				    }
-				}
+            {
+                if (TabControl.Items.Count == 0)
+                {
+                    try
+                    {
+                        string tempFile = Path.Combine(Path.GetTempPath(), "SampleMarkdown.md");
+                        File.Copy(Path.Combine(Environment.CurrentDirectory, "SampleMarkdown.md"), tempFile, true);
+                        OpenTab(tempFile);
+                    }
+                    catch (Exception ex)
+                    {
+                        mmApp.Log("Handled: Unable to copy file to temp folder.", ex);
+                    }
+                }                
 
-                // Add Snippets Addin
-			    Dispatcher.Delay(3000, p =>
-			    {
-			        var url = "https://github.com/RickStrahl/Snippets-MarkdownMonster-Addin/raw/master/Build/addin.zip";
-                    var addin = new AddinItem
-			        {
-			            id = "Snippets"
-			        };
-			        try
-			        {
-			            AddinManager.Current.DownloadAndInstallAddin(url, Path.Combine(mmApp.Configuration.AddinsFolder), addin);
-			        }
-                    catch { }
-			    });
+                mmApp.Configuration.ApplicationUpdates.FirstRun = false;
+            }
 
-				mmApp.Configuration.ApplicationUpdates.FirstRun = false;
-			}
+            BindTabHeaders();            
+            SetWindowTitle();
 
-			BindTabHeaders();
-		    SetWindowTitle();
+            if (mmApp.Configuration.IsPreviewVisible)
+            {
+                ButtonHtmlPreview.IsChecked = true;
+                ToolButtonPreview.IsChecked = true;
+                //Model.PreviewBrowserCommand.Execute(ButtonHtmlPreview);
+            }
+            
+            var left = Left;
+            Left = 300000;
 
-			if (mmApp.Configuration.IsPreviewVisible)
-			{
-				ButtonHtmlPreview.IsChecked = true;
-				ToolButtonPreview.IsChecked = true;
-				//Model.PreviewBrowserCommand.Execute(ButtonHtmlPreview);
-			}
+            // force controls to realign - required because of WebBrowser control weirdness
+            Dispatcher.InvokeAsync(() =>
+            {
+                //TabControl.InvalidateVisual();
+                Left = left;
 
-			Model.IsPresentationMode = mmApp.Configuration.OpenInPresentationMode;
-			if (Model.IsPresentationMode)
-			{
-				Model.PresentationModeCommand.Execute(ToolButtonPresentationMode);
-				Model.IsPreviewBrowserVisible = true;
-			}
-
-			var left = Left;
-			Left = 300000;
-
-			// force controls to realign - required because of WebBrowser control weirdness
-			Dispatcher.InvokeAsync(() =>
-			{
-				//TabControl.InvalidateVisual();
-				Left = left;
-
-				mmApp.SetWorkingSet(10000000, 5000000);
-			}, DispatcherPriority.Background);
+                mmApp.SetWorkingSet(10000000, 5000000);
+            }, DispatcherPriority.Background);
 
 
-			new TaskFactory().StartNew(() =>
-			{
-				Dispatcher.Invoke(() =>
-				{
-					FixMonitorPosition();
+            new TaskFactory().StartNew(() =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    FixMonitorPosition();
+                    AddinManager.Current.InitializeAddinsUi(this);
 
-					AddinManager.Current.InitializeAddinsUi(this);
-					AddinManager.Current.RaiseOnWindowLoaded();
-				}, DispatcherPriority.ApplicationIdle);
-			});            
-		}
+                    AddinManager.Current.RaiseOnWindowLoaded();
+
+                    Model.IsPresentationMode = mmApp.Configuration.OpenInPresentationMode;
+                    if (Model.IsPresentationMode)
+                        Model.WindowLayout.SetPresentationMode();
+
+                }, DispatcherPriority.ApplicationIdle);
+            });
+        }
+
+        private void OnAddinsLoaded()
+        {
+            // Check to see if we are using another preview browser and load
+            // that instead
+            Dispatcher.Invoke(LoadPreviewBrowser);
+        }
 
 
         /// <summary>
         /// Opens files from the command line or from an array of strings
         /// </summary>
         /// <param name="args">Array of file names. If null Command Line Args are used.</param>
-	    private void OpenFilesFromCommandLine(string[] args = null)
-	    {
-	        if (args == null)
-	        {
+        private void OpenFilesFromCommandLine(string[] args = null)
+        {
+            if (args == null)
+            {
                 // read fixed up command line args
-	            args = App.CommandArgs;
+                args = App.CommandArgs;
 
-	            if (args == null || args.Length == 0) // no args, only command line
-	                return;
-	        }
+                if (args == null || args.Length == 0) // no args, only command line
+                    return;
+            }
 
-	        foreach (var fileArgs in args)
-	        {
-	            var file = fileArgs;
+            foreach (var fileArgs in args)
+            {
+                var file = fileArgs;
                 if (string.IsNullOrEmpty(file))
                     continue;
 
-	            file = file.TrimEnd('\\');
+                file = file.TrimEnd('\\');
 
-	            try
-	            {
+                try
+                {
                     // FAIL: This fails at runtime not in debugger when value is .\ trimmed to . VERY WEIRD
-	                file = Path.GetFullPath(file);
-	            }
-	            catch
-	            {
-	                mmApp.Log("Fullpath CommandLine failed: " + file);
-	            }
+                    file = Path.GetFullPath(file);
+                }
+                catch
+                {
+                    mmApp.Log("Fullpath CommandLine failed: " + file);
+                }
 
-	            Topmost = true;
-	            WindowUtilities.DoEvents();
+                Topmost = true;
+                WindowUtilities.DoEvents();
 
                 if (File.Exists(file))
-	                OpenTab(mdFile: file, batchOpen: true);
-	            else if (Directory.Exists(file))
-	            {	              
-	                ShowFolderBrowser(false, file);	             
-	            }
-	            else
-	            {
-	                file = Path.Combine(App.InitialStartDirectory, file);
-	                file = Path.GetFullPath(file);
-	                if (File.Exists(file))
-	                    OpenTab(mdFile: file, batchOpen: true);
-	                else if (Directory.Exists(file))
-	                    ShowFolderBrowser(false, file);
-	            }
+                    OpenTab(mdFile: file, batchOpen: true);
+                else if (Directory.Exists(file))
+                {
+                    ShowFolderBrowser(false, file);
+                }
+                else
+                {
+                    file = Path.Combine(App.InitialStartDirectory, file);
+                    file = Path.GetFullPath(file);
+                    if (File.Exists(file))
+                        OpenTab(mdFile: file, batchOpen: true);
+                    else if (Directory.Exists(file))
+                        ShowFolderBrowser(false, file);
+                }
 
-	            Dispatcher.Delay(800, s => { Topmost = false; });
-            }            
-	    }
+                Dispatcher.Delay(800, s => { Topmost = false; });
+            }
+        }
 
-	    protected override void OnContentRendered(EventArgs e)
-		{
-			base.OnContentRendered(e);
-			WindowState = mmApp.Configuration.WindowPosition.WindowState;
-		}
+        protected override void OnContentRendered(EventArgs e)
+        {
+            base.OnContentRendered(e);
+            WindowState = mmApp.Configuration.WindowPosition.WindowState;
+        }
 
-		protected override void OnDeactivated(EventArgs e)
-		{
-			var editor = Model.ActiveEditor;
-			if (editor != null)
-			{
-				var doc = Model.ActiveDocument;
-				doc.IsActive = true;
+        protected override void OnDeactivated(EventArgs e)
+        {
+            var editor = Model.ActiveEditor;
+            if (editor == null) return;
 
-				doc.LastEditorLineNumber = editor.GetLineNumber();
-				if (doc.LastEditorLineNumber == -1)
-					doc.LastEditorLineNumber = 0;
-			}
+            var doc = Model.ActiveDocument;
+            if (doc == null) return;
 
-			base.OnDeactivated(e);
-			mmApp.SetWorkingSet(10000000, 5000000);
-		}
+            doc.IsActive = true;
 
-		protected void OnActivated(object sender, EventArgs e)
-		{
-			var selectedTab = TabControl.SelectedItem as TabItem;
+            doc.LastEditorLineNumber = editor.GetLineNumber();
+            if (doc.LastEditorLineNumber == -1)
+                doc.LastEditorLineNumber = 0;
 
-			// check for external file changes
-			for (int i = TabControl.Items.Count - 1; i > -1; i--)
-			{
-				var tab = TabControl.Items[i] as TabItem;
+            base.OnDeactivated(e);
 
-				if (tab != null)
-				{
-					var editor = tab.Tag as MarkdownDocumentEditor;
-					var doc = editor?.MarkdownDocument;
-					if (doc == null)
-						continue;
+            mmApp.SetWorkingSet(10000000, 5000000);
+        }
 
-					if (doc.HasFileCrcChanged())
-					{
-						// force update to what's on disk so it doesn't fire again
-						// do here prior to dialogs so this code doesn't fire recursively
-						doc.UpdateCrc();
+        protected void OnActivated(object sender, EventArgs e)
+        {
+            CheckFileChangeInOpenDocuments();
+        }
 
-						string filename = doc.FilenamePathWithIndicator.Replace("*", "");
-						string template = filename +
-						                  "\r\n\r\nThis file has been modified by another program.\r\nDo you want to reload it?";
+        public void CheckFileChangeInOpenDocuments()
+        {
+            var selectedTab = TabControl.SelectedItem as TabItem;
 
-						if (MessageBox.Show(this, template,
-							    "Reload",
-							    MessageBoxButton.YesNo,
-							    MessageBoxImage.Question) == MessageBoxResult.Yes)
-						{
-							if (!doc.Load(doc.Filename))
-							{
-								MessageBox.Show(this, "Unable to re-load current document.",
-									"Error re-loading file",
-									MessageBoxButton.OK, MessageBoxImage.Exclamation);
-								continue;
-							}
+            // check for external file changes
+            for (int i = TabControl.Items.Count - 1; i > -1; i--)
+            {
+                var tab = TabControl.Items[i] as TabItem;
 
-							try
-							{
-								dynamic pos = editor.AceEditor?.getscrolltop(false);
-								editor.SetMarkdown(doc.CurrentText);
-								editor.AceEditor?.updateDocumentStats(false);
-								if (pos != null && pos > 0)
-									editor.AceEditor?.setscrolltop(pos);
-							}
-							catch (Exception ex)
-							{
-								mmApp.Log("Changed file notification update failure", ex);
-								MessageBox.Show(this, "Unable to re-load current document.",
-									"Error re-loading file",
-									MessageBoxButton.OK, MessageBoxImage.Exclamation);
-							}
+                if (tab != null)
+                {
+                    var editor = tab.Tag as MarkdownDocumentEditor;
+                    var doc = editor?.MarkdownDocument;
+                    if (doc == null)
+                        continue;
 
-							if (tab == selectedTab)
-							    PreviewBrowser.PreviewMarkdown(editor, keepScrollPosition: true);
-						}
-					}
-				}
+                    if (doc.HasFileCrcChanged())
+                    {
+                        // force update to what's on disk so it doesn't fire again
+                        // do here prior to dialogs so this code doesn't fire recursively
+                        doc.UpdateCrc();
 
-				// Ensure that user hasn't higlighted a MenuItem so the menu doesn't lose focus
-				if (!MainMenu.Items.OfType<MenuItem>().Any(item => item.IsHighlighted))
-				{
-					var selectedEditor = selectedTab.Tag as MarkdownDocumentEditor;
-					if (selectedEditor != null)
-					{
-						try
-						{
-							selectedEditor.WebBrowser.Focus();
-							selectedEditor.SetEditorFocus();
-							selectedEditor.RestyleEditor();
-						}
-						catch
-						{
-						}
-					}
-				}
-			}
-		}
 
-	    protected override void OnClosing(CancelEventArgs e)
-		{
-			base.OnClosing(e);
+                        string filename = doc.FilenamePathWithIndicator.Replace("*", "");
+                        string template = filename +
+                                          "\r\n\r\n" +
+                                          "This file has been modified by another program.\r\n" +
+                                          "Do you want to reload it?";
 
-		    _previewBrowserWindow?.Close();
+                        if (!doc.IsDirty || MessageBox.Show(this, template,
+                                "Reload",
+                                MessageBoxButton.YesNo,
+                                MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes)
+                        {
+                            if (!doc.Load(doc.Filename))
+                            {
+                                MessageBox.Show(this, "Unable to re-load current document.",
+                                    "Error re-loading file",
+                                    MessageBoxButton.OK, MessageBoxImage.Exclamation);
+                                continue;
+                            }
+
+                            try
+                            {
+                                int scroll = editor.GetScrollPosition();
+                                editor.SetMarkdown(doc.CurrentText);
+                                editor.AceEditor?.updateDocumentStats(false);
+
+                                if (scroll > -1)
+                                    editor.SetScrollPosition(scroll);
+                            }
+                            catch (Exception ex)
+                            {
+                                mmApp.Log("Changed file notification update failure", ex);
+                                MessageBox.Show(this, "Unable to re-load current document.",
+                                    "Error re-loading file",
+                                    MessageBoxButton.OK, MessageBoxImage.Exclamation);
+                            }
+
+                            if (tab == selectedTab)
+                                PreviewBrowser.PreviewMarkdown(editor, keepScrollPosition: true);
+                        }
+                    }
+                }
+
+                // Ensure that user hasn't higlighted a MenuItem so the menu doesn't lose focus
+                if (!MainMenu.Items.OfType<MenuItem>().Any(item => item.IsHighlighted))
+                {
+                    var selectedEditor = selectedTab.Tag as MarkdownDocumentEditor;
+                    if (selectedEditor != null)
+                    {
+                        try
+                        {
+                            selectedEditor.WebBrowser.Focus();
+                            selectedEditor.SetEditorFocus();
+                            selectedEditor.RestyleEditor();
+                        }
+                        catch
+                        {
+                        }
+                    }
+                }
+            }
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            base.OnClosing(e);
+
+            _previewBrowserWindow?.Close();
             _previewBrowserWindow = null;
-            
-			AddinManager.Current.RaiseOnApplicationShutdown();
 
-			bool isNewVersion = CheckForNewVersion(false, false);
+            AddinManager.Current.RaiseOnApplicationShutdown();
 
-			mmApp.Configuration.ApplicationUpdates.AccessCount++;
+            bool isNewVersion = CheckForNewVersion(false, false);
 
-			SaveSettings();
+            mmApp.Configuration.ApplicationUpdates.AccessCount++;
 
-			if (!CloseAllTabs())
-			{
-				//Show();
-				e.Cancel = true;
-				return;
-			}
+            SaveSettings();
 
-		    Hide();
+            if (!CloseAllTabs())
+            {
+                //Show();
+                e.Cancel = true;
+                return;
+            }
+
+            Hide();
 
             Top -= 10000;
 
-			if (mmApp.Configuration.UseSingleWindow)
-			{
-				PipeManager?.StopServer();
+            if (mmApp.Configuration.UseSingleWindow)
+            {
+                PipeManager?.StopServer();
 
-				if (App.Mutex != null)
-					App.Mutex.Dispose();
-			}
+                if (App.Mutex != null)
+                    App.Mutex.Dispose();
+            }
 
-			var displayCount = 6;
-			if (mmApp.Configuration.ApplicationUpdates.AccessCount > 250)
-				displayCount = 1;
-			else if (mmApp.Configuration.ApplicationUpdates.AccessCount > 100)
-				displayCount = 2;
-			else if (mmApp.Configuration.ApplicationUpdates.AccessCount > 50)
-				displayCount = 4;
+            var displayCount = 6;
+            if (mmApp.Configuration.ApplicationUpdates.AccessCount > 250)
+                displayCount = 1;
+            else if (mmApp.Configuration.ApplicationUpdates.AccessCount > 100)
+                displayCount = 2;
+            else if (mmApp.Configuration.ApplicationUpdates.AccessCount > 50)
+                displayCount = 4;
 
-			if (!isNewVersion &&
-			    mmApp.Configuration.ApplicationUpdates.AccessCount % displayCount == 0 &&
-			    !UnlockKey.IsRegistered())
-			{
-				Hide();
-				Top += 10000;
-				var rd = new RegisterDialog();
-				rd.Owner = this;
-				rd.ShowDialog();
-			}
+            if (!isNewVersion &&
+                mmApp.Configuration.ApplicationUpdates.AccessCount % displayCount == 0 &&
+                !UnlockKey.IsRegistered())
+            {
+                Hide();
+                Top += 10000;
+                var rd = new RegisterDialog();
+                rd.Owner = this;
+                rd.ShowDialog();
+            }
 
-			mmApp.Shutdown();
+            mmApp.Shutdown();
 
-			e.Cancel = false;
-		}
+            e.Cancel = false;
+        }
 
-		public void AddRecentFile(string file, bool noConfigWrite = false)
-		{
-			Dispatcher.InvokeAsync(() =>
-				{
-					mmApp.Configuration.AddRecentFile(file);				
+        public void AddRecentFile(string file, bool noConfigWrite = false)
+        {
+            Dispatcher.InvokeAsync(() =>
+            {
+                mmApp.Configuration.AddRecentFile(file);
 
-					if (!noConfigWrite)
-						mmApp.Configuration.Write();
+                if (!noConfigWrite)
+                    mmApp.Configuration.Write();
 
-					try
-					{
-						MostRecentlyUsedList.AddToRecentlyUsedDocs(Path.GetFullPath(file));
-					}
-					catch{}
-				},DispatcherPriority.ApplicationIdle);
-		}
+                try
+                {
+                    MostRecentlyUsedList.AddToRecentlyUsedDocs(Path.GetFullPath(file));
+                }
+                catch
+                {
+                }
+            }, DispatcherPriority.ApplicationIdle);
+        }
 
-		/// <summary>
-		/// Creates/Updates the Recent Items Context list
-		/// from recent file and recent folder configuration
-		/// </summary>
-		public void UpdateRecentDocumentsContextMenu()
-		{
-			var contextMenu = Resources["ContextMenuRecentFiles"] as ContextMenu;
-			if (contextMenu == null)
-				return;
-            
-		    contextMenu.Items.Clear();
-			ButtonRecentFiles.Items.Clear();
+        /// <summary>
+        /// Creates/Updates the Recent Items Context list
+        /// from recent file and recent folder configuration
+        /// </summary>
+        public void UpdateRecentDocumentsContextMenu()
+        {
+            var contextMenu = Resources["ContextMenuRecentFiles"] as ContextMenu;
+            if (contextMenu == null)
+                return;
 
-			List<string> badFiles = new List<string>();
-			foreach (string file in mmApp.Configuration.RecentDocuments)
-			{
-				if (!File.Exists(file))
-				{
-					badFiles.Add(file);
-					continue;
-				}
-				var mi = new MenuItem()
-				{
-					Header = file.Replace("_","__"),
-				};
-			    mi.Command = Model.Commands.OpenRecentDocumentCommand;
+            contextMenu.Items.Clear();
+            ButtonRecentFiles.Items.Clear();
+
+            MenuItem mi = null;
+            MenuItem mi2 = null;
+
+            List<string> badFiles = new List<string>();
+            foreach (string file in mmApp.Configuration.RecentDocuments)
+            {
+                if (!File.Exists(file))
+                {
+                    badFiles.Add(file);
+                    continue;
+                }
+
+                mi = new MenuItem()
+                {
+                    Header = file.Replace("_", "__"),
+                };
+                mi.Command = Model.Commands.OpenRecentDocumentCommand;
                 mi.CommandParameter = file;
-	            contextMenu.Items.Add(mi);
+                contextMenu.Items.Add(mi);
 
-				var mi2 = new MenuItem()
-				{
-					Header = file,
-				};
-			    mi2.Command = Model.Commands.OpenRecentDocumentCommand;
-			    mi2.CommandParameter = file;
-				ButtonRecentFiles.Items.Add(mi2);
-			}
-			ToolbarButtonRecentFiles.ContextMenu = contextMenu;
+                mi2 = new MenuItem()
+                {
+                    Header = file.Replace("_", "__")
+                };
+                mi2.Command = Model.Commands.OpenRecentDocumentCommand;
+                mi2.CommandParameter = file;
 
-			foreach (var file in badFiles)
-				mmApp.Configuration.RecentDocuments.Remove(file);
+                ButtonRecentFiles.Items.Add(mi2);
+            }
 
-		    if (mmApp.Configuration.FolderBrowser.RecentFolders.Count >0)
-		    {
-		        contextMenu.Items.Add(new MenuItem
-		        {
-		            IsEnabled = false,
-		            Header = "——————— Recent Folders ———————"
-                });
-		        foreach (var folder in mmApp.Configuration.FolderBrowser.RecentFolders.Take(7))
-		        {
-		            var mi = new MenuItem()
-		            {
-		                Header = folder.Replace("_", "__"),
-		            };
-		            mi.Command = Model.Commands.OpenRecentDocumentCommand;
-		            mi.CommandParameter = folder;
-		            contextMenu.Items.Add(mi);
+            ToolbarButtonRecentFiles.ContextMenu = contextMenu;
+
+            foreach (var file in badFiles)
+                mmApp.Configuration.RecentDocuments.Remove(file);
+
+            if (mmApp.Configuration.FolderBrowser.RecentFolders.Count > 0)
+            {
+                mi = new MenuItem
+                {
+                    IsEnabled = false,
+                    Header = "——————— Recent Folders ———————"
+                };
+                contextMenu.Items.Add(mi);
+                mi2 = new MenuItem
+                {
+                    IsEnabled = false,
+                    Header = "——————— Recent Folders ———————"
+                };
+                ButtonRecentFiles.Items.Add(mi2);
+
+                foreach (var folder in mmApp.Configuration.FolderBrowser.RecentFolders.Take(7))
+                {
+                    mi = new MenuItem()
+                    {
+                        Header = folder.Replace("_", "__"),
+                        Command = Model.Commands.OpenRecentDocumentCommand,
+                        CommandParameter = folder
+                    };
+                    contextMenu.Items.Add(mi);
+
+                    mi2 = new MenuItem()
+                    {
+                        Header = folder.Replace("_", "__"),
+                        Command = Model.Commands.OpenRecentDocumentCommand,
+                        CommandParameter = folder
+                    };
+                    ButtonRecentFiles.Items.Add(mi2);
                 }
             }
 
-		}
+        }
 
-		void RestoreSettings()
-		{
-			var conf = mmApp.Configuration;
+        void RestoreSettings()
+        {
+            var conf = mmApp.Configuration;
 
-			if (conf.WindowPosition.Width != 0)
-			{
-				Left = conf.WindowPosition.Left;
-				Top = conf.WindowPosition.Top;
-				Width = conf.WindowPosition.Width;
-				Height = conf.WindowPosition.Height;
-			}
+            if (conf.WindowPosition.Width != 0)
+            {
+                Left = conf.WindowPosition.Left;
+                Top = conf.WindowPosition.Top;
+                Width = conf.WindowPosition.Width;
+                Height = conf.WindowPosition.Height;
+            }
 
+            if (mmApp.Configuration.RememberLastDocumentsLength > 0 && mmApp.Configuration.UseSingleWindow)
+            {
+                //var selectedDoc = conf.RecentDocuments.FirstOrDefault();
+                TabItem selectedTab = null;
 
-			if (mmApp.Configuration.RememberLastDocumentsLength > 0 && mmApp.Configuration.UseSingleWindow)
-			{
-				//var selectedDoc = conf.RecentDocuments.FirstOrDefault();
-				TabItem selectedTab = null;
+                string firstDoc = conf.RecentDocuments.FirstOrDefault();
 
-				string firstDoc = conf.RecentDocuments.FirstOrDefault();
+                // prevent TabSelectionChanged to fire
+                batchTabAction = true;
 
+                // since docs are inserted at the beginning we need to go in reverse
+                foreach (var doc in conf.OpenDocuments.Take(mmApp.Configuration.RememberLastDocumentsLength).Reverse())
+                {
+                    if (doc.Filename == null)
+                        continue;
 
-				// prevent TabSelectionChanged to fire
-				batchTabAction = true;
+                    if (File.Exists(doc.Filename))
+                    {
+                        var tab = OpenTab(doc.Filename, selectTab: false,
+                            batchOpen:true,
+                            initialLineNumber: doc.LastEditorLineNumber);
 
-				// since docs are inserted at the beginning we need to go in reverse
-				foreach (var doc in conf.OpenDocuments.Take(mmApp.Configuration.RememberLastDocumentsLength).Reverse())
-				{
-					if (doc.Filename == null)
-						continue;
+                        if (tab == null)
+                            continue;
 
-				    if (File.Exists(doc.Filename))
-				    {
-				        var tab = OpenTab(doc.Filename, selectTab: false, batchOpen: true,
-				            initialLineNumber: doc.LastEditorLineNumber);
-				        if (tab == null)
-				            continue;
+                        if (doc.IsActive)
+                        {
+                            selectedTab = tab;                           
 
-				        if (doc.IsActive)
-				        {
-				            selectedTab = tab;
-				            // have to explicitly notify initial activation
-				            // since we surpress it on all tabs during startup
-				            AddinManager.Current.RaiseOnDocumentActivated(doc);
-				        }
-				    }
-				}
+                            // have to explicitly notify initial activation
+                            // since we surpress it on all tabs during startup
+                            AddinManager.Current.RaiseOnDocumentActivated(doc);
+                        }
+                    }
+                }
 
-			    if (selectedTab != null)
-			        TabControl.SelectedItem = selectedTab;                
-			    else
-			        TabControl.SelectedIndex = 0;
+                batchTabAction = false;
 
-			    batchTabAction = false;
-			    BindTabHeaders();
+                if (selectedTab == null)
+                    TabControl.SelectedIndex = 0;
+                else
+                    TabControl.SelectedItem = selectedTab;
 
-			}
+                
+                BindTabHeaders();
 
-			Model.IsPreviewBrowserVisible = mmApp.Configuration.IsPreviewVisible;
+            }
 
-			ShowFolderBrowser(!mmApp.Configuration.FolderBrowser.Visible);
+            Model.IsPreviewBrowserVisible = mmApp.Configuration.IsPreviewVisible;
+
+            ShowFolderBrowser(!mmApp.Configuration.FolderBrowser.Visible);
 
             // force background so we have a little more contrast
-		    if (mmApp.Configuration.ApplicationTheme == Themes.Light)
-		    {
-		        ContentGrid.Background = (SolidColorBrush) new BrushConverter().ConvertFromString("#eee");
-		        ToolbarPanelMain.Background = (SolidColorBrush)new BrushConverter().ConvertFromString("#D5DAE8");
+            if (mmApp.Configuration.ApplicationTheme == Themes.Light)
+            {
+                ContentGrid.Background = (SolidColorBrush) new BrushConverter().ConvertFromString("#eee");
+                ToolbarPanelMain.Background = (SolidColorBrush) new BrushConverter().ConvertFromString("#D5DAE8");
             }
-		    else
-		        ContentGrid.Background = (SolidColorBrush) new BrushConverter().ConvertFromString("#333");
-		}
+            else
+                ContentGrid.Background = (SolidColorBrush) new BrushConverter().ConvertFromString("#333");
+        }
 
-  
-		/// <summary>
-		/// Save active settings of the UI that are persisted in the configuration
-		/// </summary>
-		public void SaveSettings()
-		{
-			var config = mmApp.Configuration;
+
+        /// <summary>
+        /// Save active settings of the UI that are persisted in the configuration
+        /// </summary>
+        public void SaveSettings()
+        {
+            var config = mmApp.Configuration;
             if (Model != null)
-			    config.IsPreviewVisible = Model.IsPreviewBrowserVisible;
-			config.WindowPosition.IsTabHeaderPanelVisible = true;
+                config.IsPreviewVisible = Model.IsPreviewBrowserVisible;
+            config.WindowPosition.IsTabHeaderPanelVisible = true;
 
-			if (WindowState == WindowState.Normal)
-			{
-				config.WindowPosition.Left = mmFileUtils.TryConvertToInt32(Left);
-				config.WindowPosition.Top = mmFileUtils.TryConvertToInt32(Top);
-				config.WindowPosition.Width = mmFileUtils.TryConvertToInt32(Width,900);
-				config.WindowPosition.Height = mmFileUtils.TryConvertToInt32(Height,700);
+            if (WindowState == WindowState.Normal)
+            {
+                config.WindowPosition.Left = mmFileUtils.TryConvertToInt32(Left);
+                config.WindowPosition.Top = mmFileUtils.TryConvertToInt32(Top);
+                config.WindowPosition.Width = mmFileUtils.TryConvertToInt32(Width, 900);
+                config.WindowPosition.Height = mmFileUtils.TryConvertToInt32(Height, 700);
+            }
 
-			    if (MainWindowPreviewColumn.Width.IsAbsolute)
-				    config.WindowPosition.SplitterPosition = mmFileUtils.TryConvertToInt32(MainWindowPreviewColumn.Width.Value, 600);
-			}
+            if (WindowState != WindowState.Minimized)
+                config.WindowPosition.WindowState = WindowState;
 
-			if (WindowState != WindowState.Minimized)
-				config.WindowPosition.WindowState = WindowState;
+            if (LeftSidebarColumn.Width.Value > 20)
+            {
+                if (LeftSidebarColumn.Width.IsAbsolute)
+                    config.FolderBrowser.WindowWidth =
+                        mmFileUtils.TryConvertToInt32(LeftSidebarColumn.Width.Value, 220);
+                config.FolderBrowser.Visible = true;
+            }
+            else
+                config.FolderBrowser.Visible = false;
 
-			if (FolderBrowserColumn.Width.Value > 20)
-			{
-			    if(FolderBrowserColumn.Width.IsAbsolute)
-				    config.FolderBrowser.WindowWidth = mmFileUtils.TryConvertToInt32(FolderBrowserColumn.Width.Value,220);
+            config.FolderBrowser.FolderPath = FolderBrowser.FolderPath;
 
-				config.FolderBrowser.Visible = true;
-			}
-			else
-				config.FolderBrowser.Visible = false;
+            config.OpenDocuments.Clear();
+            if (mmApp.Configuration.RememberLastDocumentsLength > 0)
+            {
+                // Important: collect all open tabs in the **original tab order**
+                foreach(var dragablzItem in TabControl.GetOrderedHeaders())                        
+                { 
+                    if (dragablzItem == null)
+                        continue;
+                    
+                    var tab = dragablzItem.Content as TabItem;
+
+                    var editor = tab.Tag as MarkdownDocumentEditor;
+                    var doc = editor?.MarkdownDocument;
+                    if (doc == null)
+                        continue;
+
+                    
+                    doc.LastEditorLineNumber = editor.GetLineNumber();
+                    if (doc.LastEditorLineNumber < 1)
+                        doc.LastEditorLineNumber = editor.InitialLineNumber; // if document wasn't accessed line is never set
+                    if (doc.LastEditorLineNumber < 0)
+                        doc.LastEditorLineNumber = 0;
+
+                    config.OpenDocuments.Add(doc);
+                }
+
+                // now figure out which were recent
+                var recents = mmApp.Configuration.RecentDocuments.Take(mmApp.Configuration.RememberLastDocumentsLength).ToList();
+
+                // remove all those that aren't in the recent list
+                List<MarkdownDocument> removeList = new List<MarkdownDocument>();
+                foreach (var doc in config.OpenDocuments)
+                {
+                    if (!recents.Any(r=> r.Equals(doc.Filename,StringComparison.InvariantCultureIgnoreCase)))
+                        removeList.Add(doc);
+                }
+                foreach (var remove in removeList)
+                    config.OpenDocuments.Remove(remove);
+            }                            
+
+            config.Write();
+        }
 
 
-			config.FolderBrowser.FolderPath = FolderBrowser.FolderPath;
 
+        public bool SaveFile(bool secureSave = false)
+        {
+            var tab = TabControl.SelectedItem as TabItem;
+            if (tab == null)
+                return false;
 
-			config.OpenDocuments.Clear();
-
-			if (mmApp.Configuration.RememberLastDocumentsLength > 0)
-			{
-				foreach (var recentDocument in config.RecentDocuments.Take(mmApp.Configuration.RememberLastDocumentsLength))
-				{
-					var editor = getTabItemByFileName(recentDocument)?.Tag as MarkdownDocumentEditor;
-
-					var doc = editor?.MarkdownDocument;
-					if (doc == null)
-						continue;
-
-					doc.LastEditorLineNumber = editor.GetLineNumber();
-					if (doc.LastEditorLineNumber < 0)
-						doc.LastEditorLineNumber = 0;
-
-					config.OpenDocuments.Add(doc);
-				}
-			}
-			config.Write();
-		}
-
-        
-
-		public bool SaveFile(bool secureSave = false)
-		{
-			var tab = TabControl.SelectedItem as TabItem;
-			if (tab == null)
-				return false;
-
-			var editor = tab.Tag as MarkdownDocumentEditor;
-			var doc = editor?.MarkdownDocument;
-			if (doc == null)
-				return false;
+            var editor = tab.Tag as MarkdownDocumentEditor;
+            var doc = editor?.MarkdownDocument;
+            if (doc == null)
+                return false;
 
             // prompt for password on a secure save
-		    if (secureSave && editor.MarkdownDocument.Password == null)
-		    {
-		        var pwdDialog = new FilePasswordDialog(editor.MarkdownDocument,false);
-		        pwdDialog.ShowDialog();
-		    }
+            if (secureSave && editor.MarkdownDocument.Password == null)
+            {
+                var pwdDialog = new FilePasswordDialog(editor.MarkdownDocument, false);
+                pwdDialog.ShowDialog();
+            }
 
-			if (!editor.SaveDocument())
-			{
-				//var res = await this.ShowMessageOverlayAsync("Unable to save Document",
-				//    "Unable to save document most likely due to missing permissions.");
+            if (!editor.SaveDocument())
+            {
+                //var res = await this.ShowMessageOverlayAsync("Unable to save Document",
+                //    "Unable to save document most likely due to missing permissions.");
 
-				MessageBox.Show("Unable to save document most likely due to missing permissions.",
-					mmApp.ApplicationName);
-				return false;
-			}
+                MessageBox.Show("Unable to save document most likely due to missing permissions.",
+                    mmApp.ApplicationName);
+                return false;
+            }
 
-			return true;
-		}
+            return true;
+        }
 
-		#endregion
+        #endregion
 
-		#region Tab Handling
-
-	    /// <summary>
-	    /// Opens a tab by a filename
-	    /// </summary>
-	    /// <param name="mdFile"></param>
-	    /// <param name="editor"></param>
-	    /// <param name="showPreviewIfActive"></param>
-	    /// <param name="syntax"></param>
-	    /// <param name="selectTab"></param>
-	    /// <param name="rebindTabHeaders">
-	    /// Rebinds the headers which should be done whenever a new Tab is
-	    /// manually opened and added but not when opening in batch.
-	    ///
-	    /// Checks to see if multiple tabs have the same filename open and
-	    /// if so displays partial path.
-	    ///
-	    /// New Tabs are opened at the front of the tab list at index 0
-	    /// </param>
-	    /// <returns></returns>
-	    public TabItem OpenTab(string mdFile = null,
-	        MarkdownDocumentEditor editor = null,
-	        bool showPreviewIfActive = false,
-	        string syntax = "markdown",
-	        bool selectTab = true,
-	        bool rebindTabHeaders = false,
-	        bool batchOpen = false,
-	        int initialLineNumber = 0)
-	    {
-	        if (mdFile != null && mdFile != "untitled" &&
-	            (!File.Exists(mdFile) ||
-	             !AddinManager.Current.RaiseOnBeforeOpenDocument(mdFile)))
-	            return null;
-
-	        var tab = new TabItem();
-	        //tab.Margin = new Thickness(0, 0, 3, 0);
-	        //tab.Padding = new Thickness(2, 0, 7, 2);
-	        tab.Background = Background;
-
-	        ControlsHelper.SetHeaderFontSize(tab, 13F);
-
-	        var webBrowser = new WebBrowser
-	        {
-                // hide initially so there's less flicker
-	            Visibility = Visibility.Hidden,	                            
-	        };
-	        tab.Content = webBrowser;
-	        
-	        if (editor == null)
-	        {
-	            editor = new MarkdownDocumentEditor(webBrowser)
-	            {
-	                Window = this,
-	                EditorSyntax = syntax,
-	                InitialLineNumber = initialLineNumber
-	            };
-
-	            var doc = new MarkdownDocument()
-	            {
-	                Filename = mdFile ?? "untitled",
-	                Dispatcher = Dispatcher
-	            };
-	            if (doc.Filename != "untitled")
-	            {
-	                doc.Filename = mmFileUtils.GetPhysicalPath(doc.Filename);
-
-	                if (doc.HasBackupFile())
-	                {
-	                    try
-	                    {
-	                        ShowStatus("Auto-save recovery files have been found and opened in the editor.",
-	                            milliSeconds: 9000);
-	                        SetStatusIcon(FontAwesomeIcon.Warning, Colors.Red);
-	                        {
-	                            File.Copy(doc.BackupFilename, doc.BackupFilename + ".md");
-	                            OpenTab(doc.BackupFilename + ".md");
-	                            File.Delete(doc.BackupFilename + ".md");
-	                        }
-	                    }
-	                    catch (Exception ex)
-	                    {
-	                        string msg = "Unable to open backup file: " + doc.BackupFilename + ".md";
-	                        mmApp.Log(msg, ex);
-	                        MessageBox.Show(
-	                            "A backup file was previously saved, but we're unable to open it.\r\n" + msg,
-	                            "Cannot open backup file",
-	                            MessageBoxButton.OK,
-	                            MessageBoxImage.Warning);
-	                    }
-	                }
-
-	                if (doc.Password == null && doc.IsFileEncrypted())
-	                {
-	                    var pwdDialog = new FilePasswordDialog(doc, true)
-	                    {
-	                        Owner = this
-	                    };
-	                    bool? pwdResult = pwdDialog.ShowDialog();
-	                    if (pwdResult == false)
-	                    {
-	                        ShowStatus("Encrypted document not opened, due to missing password.",
-	                            mmApp.Configuration.StatusTimeout);
-
-	                        return null;
-	                    }
-	                }
+        #region Tab Handling
 
 
-	                if (!doc.Load())
-	                {
-	                    if (!batchOpen)
-	                    {
+        ///  <summary>
+        ///  Opens a tab by a filename
+        ///  </summary>
+        ///  <param name="mdFile"></param>
+        ///  <param name="editor"></param>
+        ///  <param name="showPreviewIfActive"></param>
+        ///  <param name="syntax"></param>
+        ///  <param name="selectTab"></param>
+        ///  <param name="rebindTabHeaders">
+        ///  Rebinds the headers which should be done whenever a new Tab is
+        ///  manually opened and added but not when opening in batch.
+        /// 
+        ///  Checks to see if multiple tabs have the same filename open and
+        ///  if so displays partial path.
+        /// 
+        ///  New Tabs are opened at the front of the tab list at index 0
+        ///  </param>
+        /// <param name="batchOpen"></param>
+        /// <param name="initialLineNumber"></param>
+        /// <param name="readOnly"></param>
+        /// <param name="noFocus"></param>
+        /// <param name="isPreview"></param>        
+        /// <returns></returns>
+        public TabItem OpenTab(string mdFile = null,
+            MarkdownDocumentEditor editor = null,
+            bool showPreviewIfActive = false,
+            string syntax = "markdown",
+            bool selectTab = true,
+            bool rebindTabHeaders = false,
+            bool batchOpen = false,
+            int initialLineNumber = 0,
+            bool readOnly = false,
+            bool noFocus = false,
+            bool isPreview = false)
+        {
+            if (mdFile != null && mdFile != "untitled" &&
+                (!File.Exists(mdFile) ||
+                 !AddinManager.Current.RaiseOnBeforeOpenDocument(mdFile)))
+                return null;
+
+            var tab = new TabItem();
+            tab.Background = Background;
+            
+            ControlsHelper.SetHeaderFontSize(tab, 13F);
+
+            if (editor == null)
+            {
+                editor = new MarkdownDocumentEditor
+                {
+                    Window = this,
+                    EditorSyntax = syntax,
+                    InitialLineNumber = initialLineNumber,
+                    IsReadOnly = readOnly,
+                    NoInitialFocus = noFocus,
+                    IsPreview = isPreview
+                };
+
+                tab.Content = editor.EditorPreviewPane;
+                tab.Tag = editor;
+
+                // tab is temporary until edited
+                if (isPreview)
+                {
+                    if (PreviewTab != null)
+                        TabControl.Items.Remove(PreviewTab);
+                    PreviewTab = tab;
+                }
+
+                var doc = new MarkdownDocument()
+                {
+                    Filename = mdFile ?? "untitled",
+                    Dispatcher = Dispatcher
+                };
+                if (doc.Filename != "untitled")
+                {
+                    doc.Filename = FileUtils.GetPhysicalPath(doc.Filename);
+
+                    if (doc.HasBackupFile())
+                    {
+                        try
+                        {
+                            ShowStatusError("Auto-save recovery files have been found and opened in the editor.");
+                            {
+                                File.Copy(doc.BackupFilename, doc.BackupFilename + ".md");
+                                OpenTab(doc.BackupFilename + ".md");
+                                File.Delete(doc.BackupFilename + ".md");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            string msg = "Unable to open backup file: " + doc.BackupFilename + ".md";
+                            mmApp.Log(msg, ex);
+                            MessageBox.Show(
+                                "A backup file was previously saved, but we're unable to open it.\r\n" + msg,
+                                "Cannot open backup file",
+                                MessageBoxButton.OK,
+                                MessageBoxImage.Warning);
+                        }
+                    }
+
+                    if (doc.Password == null && doc.IsFileEncrypted())
+                    {
+                        var pwdDialog = new FilePasswordDialog(doc, true)
+                        {
+                            Owner = this
+                        };
+                        bool? pwdResult = pwdDialog.ShowDialog();
+                        if (pwdResult == false)
+                        {
+                            ShowStatus("Encrypted document not opened, due to missing password.",
+                                mmApp.Configuration.StatusMessageTimeout);
+
+                            return null;
+                        }
+                    }
+
+
+                    if (!doc.Load())
+                    {
+                        if (!batchOpen)
+                        {
                             var msg = "Most likely you don't have access to the file";
-	                        if (doc.Password != null && doc.IsFileEncrypted())
-	                            msg = "Invalid password for opening this file";
-	                        var file = Path.GetFileName(doc.Filename);
+                            if (doc.Password != null && doc.IsFileEncrypted())
+                                msg = "Invalid password for opening this file";
+                            var file = Path.GetFileName(doc.Filename);
 
                             MessageBox.Show(
-	                            $"{msg}.\r\n\r\n{file}",
-	                            "Can't open File", MessageBoxButton.OK,
-	                            MessageBoxImage.Warning);
-	                    }
+                                $"{msg}.\r\n\r\n{file}",
+                                "Can't open File", MessageBoxButton.OK,
+                                MessageBoxImage.Warning);
+                        }
 
-	                    return null;
-	                }
-	            }
+                        return null;
+                    }
+                }
 
-	            doc.PropertyChanged += (sender, e) =>
-	            {
-	                if (e.PropertyName == "IsDirty")
-	                {
-	                    //CommandManager.InvalidateRequerySuggested();
-	                    Model.Commands.SaveCommand.InvalidateCanExecute();
-	                }
-	            };
-	            editor.MarkdownDocument = doc;
+                editor.MarkdownDocument = doc;                
+                SetTabHeaderBinding(tab, doc, "FilenameWithIndicator");
+                tab.ToolTip = doc.Filename;
+            }
+            else
+                tab.Tag = editor;
 
-	            SetTabHeaderBinding(tab, doc, "FilenameWithIndicator");
+            var filename = Path.GetFileName(editor.MarkdownDocument.Filename);
+            editor.LoadDocument();
 
+            // is the tab already open?
+            TabItem existingTab = null;
+            if (filename != "untitled")
+            {
+                foreach (TabItem tb in TabControl.Items)
+                {
+                    var lEditor = tb.Tag as MarkdownDocumentEditor;
+                    if (lEditor == null)
+                        continue;
 
-	            tab.ToolTip = doc.Filename;
-	        }
+                    if (lEditor.MarkdownDocument.Filename == editor.MarkdownDocument.Filename)
+                    {
+                        existingTab = tb;
+                        break;
+                    }
+                }
+            }
 
-	        var filename = Path.GetFileName(editor.MarkdownDocument.Filename);
-	        tab.Tag = editor;
+            Model.OpenDocuments.Add(editor.MarkdownDocument);
+            Model.ActiveDocument = editor.MarkdownDocument;
 
+            if (existingTab != null)
+                TabControl.Items.Remove(existingTab);
 
-	        editor.LoadDocument();
-
-	        // is the tab already open?
-	        TabItem existingTab = null;
-	        if (filename != "untitled")
-	        {
-	            foreach (TabItem tb in TabControl.Items)
-	            {
-	                var lEditor = tb.Tag as MarkdownDocumentEditor;
-	                if (lEditor.MarkdownDocument.Filename == editor.MarkdownDocument.Filename)
-	                {
-	                    existingTab = tb;
-	                    break;
-	                }
-	            }
-	        }
-
-	        Model.OpenDocuments.Add(editor.MarkdownDocument);
-	        Model.ActiveDocument = editor.MarkdownDocument;
-
-	        if (existingTab != null)
-	            TabControl.Items.Remove(existingTab);
-
-	        tab.IsSelected = false;
-
-	        TabControl.Items.Insert(0, tab);
+            tab.IsSelected = false;            
+            TabControl.Items.Insert(0, tab);
 
 
-	        if (selectTab)
-	        {
-	            TabControl.SelectedItem = tab;
+            if (selectTab)
+            {
+                TabControl.SelectedItem = tab;
 
-	            if (showPreviewIfActive && PreviewWebBrowserControl.Width > 5)
-	                PreviewBrowser.PreviewMarkdownAsync();
+                SetWindowTitle();
 
-	            SetWindowTitle();
-	        }
+                Model.OnPropertyChanged(nameof(AppModel.ActiveEditor));
+            }
 
-	        AddinManager.Current.RaiseOnAfterOpenDocument(editor.MarkdownDocument);
+            AddinManager.Current.RaiseOnAfterOpenDocument(editor.MarkdownDocument);
 
-	        if (rebindTabHeaders)
-	            BindTabHeaders();
+            if (rebindTabHeaders)
+                BindTabHeaders();
 
-	        // force bindings to change
-	        Model.OnPropertyChanged(nameof(AppModel.IsTabOpen));
-	        Model.OnPropertyChanged(nameof(AppModel.IsNoTabOpen));
-
+            // force tabstate bindings to update
+            Model.OnPropertyChanged(nameof(AppModel.IsTabOpen));
+            Model.OnPropertyChanged(nameof(AppModel.IsNoTabOpen));
 
             return tab;
-	    }
+        }
+
+        private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (batchTabAction)
+                return;
+
+            var editor = GetActiveMarkdownEditor();
+            if (editor == null)
+                return;
+
+            var tab = TabControl.SelectedItem as TabItem;
+
+            SetWindowTitle();
+
+            foreach (var doc in Model.OpenDocuments)
+                doc.IsActive = false;
+
+            Model.ActiveDocument = editor.MarkdownDocument;
+            Model.ActiveDocument.IsActive = true;
+
+            AddRecentFile(Model.ActiveDocument?.Filename, noConfigWrite: true);
+
+            AddinManager.Current.RaiseOnDocumentActivated(Model.ActiveDocument);
+
+
+            ((Grid) PreviewBrowserContainer.Parent)?.Children.Remove(PreviewBrowserContainer);
+            editor.EditorPreviewPane.PreviewBrowserContainer.Children.Add(PreviewBrowserContainer);
+
+            if (tab.Content is Grid grid)
+                grid.Children.Add(PreviewBrowserContainer);
+
+            Model.WindowLayout.IsPreviewVisible = mmApp.Configuration.IsPreviewVisible;
+
+            if (mmApp.Configuration.IsPreviewVisible)
+                PreviewBrowser?.PreviewMarkdown();
+
+            Model.ActiveEditor.RestyleEditor();
+
+            // handle preview tab closing
+            if (PreviewTab != null && tab != PreviewTab)
+            {                
+                if (PreviewTab.Tag == null)
+                    CloseTab(PreviewTab); // browser preview
+                else
+                {
+                    // preview Markdown Tab
+                    var changedDoc = PreviewTab.Tag as MarkdownDocumentEditor;
+                    if (changedDoc != null)
+                    {
+                        if (changedDoc.IsDirty())
+                        {
+                            // keep the document open
+                            changedDoc.IsPreview = false;
+                            PreviewTab = null;
+                        }
+                        else
+                            CloseTab(PreviewTab);
+                    }
+                }
+            }
+
+            Dispatcher.InvokeAsync(() => UpdateDocumentOutline(), DispatcherPriority.ApplicationIdle);
+        }
+
+
+        /// <summary>
+        /// Refreshes an already loaded tab with contents of a new (or the same file) file
+        /// by just replacing the document's text.
+        /// 
+        /// If the tab is not found a new tab is opened.
+        /// 
+        /// Note: File must already be open for this to work                
+        /// </summary>
+        /// <param name="editorFile">File name to display int the tab</param>
+        /// <param name="maintainScrollPosition">If possible preserve scroll position if refreshing</param>
+        /// <param name="noPreview">If true don't refresh the preview after updating the file</param>
+        /// <param name="noSelectTab"></param>
+        /// <param name="noFocus">if true don't focus the editor</param>
+        /// <param name="readOnly">if true document can't be edited</param>
+        /// <param name="isPreview">Determines whether this tab is treated like a preview tab</param>
+        /// <returns>selected tab item or null</returns>
+        public TabItem RefreshTabFromFile(string editorFile,
+            bool maintainScrollPosition = false,
+            bool noPreview = false,
+            bool noSelectTab = false,
+            bool noFocus = false,
+            bool readOnly = false,
+            bool isPreview = false)
+        {
+
+            var tab = GetTabFromFilename(editorFile);
+            if (tab == null)
+                return OpenTab(editorFile, rebindTabHeaders: true, readOnly: readOnly, noFocus: noFocus, selectTab: !noSelectTab, isPreview:isPreview);
+
+            // load the underlying document
+            var editor = tab.Tag as MarkdownDocumentEditor;
+            if (editor == null)
+                return null;
+
+            editor.IsPreview = isPreview;
+            if (isPreview)
+                PreviewTab = tab;
+
+            editor.MarkdownDocument.Load(editorFile);
+
+            if (!maintainScrollPosition)
+                editor.SetCursorPosition(0, 0);
+
+            editor.SetMarkdown(editor.MarkdownDocument.CurrentText);
+
+            if (!noSelectTab)
+                TabControl.SelectedItem = tab;
+            if (!noFocus)
+                editor.SetEditorFocus();
+            editor.IsPreview = isPreview;
+            
+            if (!noPreview)
+                PreviewMarkdownAsync();
+
+            return tab;
+        }
+
+        /// <summary>
+        /// Opens a preview tab
+        /// </summary>
+        /// <param name="url"></param>
+        /// <param name="selectTab"></param>
+        /// <returns></returns>
+        public TabItem OpenBrowserTab(string url,
+            bool selectTab = true,
+            bool isImageFile = false,
+            ImageSource icon = null,
+            string tabHeaderText = "Preview")
+        {
+
+            // if a document preview tab is open close it
+            if (PreviewTab?.Tag != null)
+            {
+                CloseTab(PreviewTab);
+                PreviewTab = null;
+            }
+
+            if (PreviewTab == null)
+            {
+                PreviewTab = new TabItem();                                
+                
+                var grid = new Grid();
+                PreviewTab.Header = grid;
+                var col1 = new ColumnDefinition { Width = new GridLength(20) };
+                var col2 = new ColumnDefinition { Width = GridLength.Auto };
+                grid.ColumnDefinitions.Add(col1);
+                grid.ColumnDefinitions.Add(col2);
+
+                if (icon == null)
+                {
+                    if (isImageFile)
+                        icon = FolderStructure.IconList.GetIconFromType("image");
+                    else
+                        icon = FolderStructure.IconList.GetIconFromType("preview");
+                }
+
+                var img = new Image()
+                {
+                    Source = icon,
+                    Height = 16,
+                    Margin = new Thickness(0, 1, 5, 0),
+                    Name = "IconImage"
+                };
+                img.SetValue(Grid.ColumnProperty, 0);
+                grid.Children.Add(img);
+
+
+                var textBlock = new TextBlock
+                {
+                    Name = "HeaderText",
+                    Text = tabHeaderText,
+                    FontWeight = FontWeights.SemiBold,
+                    FontStyle = FontStyles.Italic
+                };
+                textBlock.SetValue(Grid.ColumnProperty, 1);
+                grid.Children.Add(textBlock);
+
+                ControlsHelper.SetHeaderFontSize(PreviewTab, 13F);
+
+                previewBrowser = new IEWebBrowserControl();
+                PreviewTab.Content = previewBrowser;
+                TabControl.Items.Add(PreviewTab);
+
+                PreviewTab.HorizontalAlignment = HorizontalAlignment.Right;
+                PreviewTab.HorizontalContentAlignment = HorizontalAlignment.Right;
+            }
+            else
+            {
+                if (icon == null)
+                {
+                    if (isImageFile)
+                        icon = FolderStructure.IconList.GetIconFromType("image");
+                    else
+                        icon = FolderStructure.IconList.GetIconFromType("preview");
+                }
+
+                var grid  = PreviewTab.Header as Grid;
+
+                
+                var imgCtrl = grid.Children[0] as Image; //.FindChild<Image>("IconImage");
+                imgCtrl.Source = icon;
+                var header = grid.Children[1] as TextBlock;  // FindChild<TextBlock>("HeaderText");
+                header.Text = tabHeaderText;
+                
+
+            }
+            PreviewTab.ToolTip = url;
+
+            try
+            {
+
+                if (isImageFile)
+                {
+                    var file = Path.Combine(App.InitialStartDirectory, "PreviewThemes", "ImagePreview.html");
+                    string fileInfo = null;
+
+                    try
+                    {
+                        string filename = Path.GetFileName(url);
+                        string fileDimension;
+                        using (var bmp = new Bitmap(url))
+                        {
+                            fileDimension = $"{bmp.Width}x{bmp.Height}";
+                        }
+                        var fileSize = ((decimal) (new FileInfo(url).Length) / 1000).ToString("N1");
+                        fileInfo = $"<b>{filename}</b> - {fileDimension} &nbsp; {fileSize}kb";
+                    }
+                    catch { }
+
+                    var content = File.ReadAllText(file).Replace("{{imageUrl}}", url).Replace("{{fileInfo}}",fileInfo);
+                    File.WriteAllText(file.Replace("ImagePreview.html", "_ImagePreview.html"), content);
+                    url= Path.Combine(App.InitialStartDirectory, "PreviewThemes", "_ImagePreview.html");                    
+                }                    
+
+                previewBrowser.Navigate(url);
+            }
+            catch
+            {
+                previewBrowser.Navigate("about: blank");
+            }
+
+            if (PreviewTab != null && selectTab)
+                TabControl.SelectedItem = PreviewTab;
+
+            // HACK: force refresh of display model
+            Model.OnPropertyChanged(nameof(AppModel.IsTabOpen));
+            Model.OnPropertyChanged(nameof(AppModel.IsNoTabOpen));
+
+            return PreviewTab;
+        }
+
+
+        /// <summary>
+        /// Closes a tab and ask for confirmation if the tab doc
+        /// is dirty.
+        /// </summary>
+        /// <param name="tab"></param>
+        /// <param name="rebindTabHeaders">
+        /// When true tab headers are rebound to handle duplicate filenames
+        /// with path additions.
+        /// </param>
+        /// <returns>true if tab can close, false if it should stay open</returns>
+        public bool CloseTab(TabItem tab, bool rebindTabHeaders = true, bool dontPromptForSave = false)
+        {
+            if (tab == null)
+                return false;
+
+            if (tab == PreviewTab)
+            {
+                tab.Content = null;
+                TabControl.Items.Remove(tab);
+                PreviewTab = null;
+                return true;
+            }
+
+            var editor = tab?.Tag as MarkdownDocumentEditor;
+            if (editor == null)
+                return false;
+
+            bool returnValue = true;
+
+            tab.Padding = new Thickness(200);
+
+            var doc = editor.MarkdownDocument;
+
+            doc.CleanupBackupFile();
+
+            if (doc.IsDirty && !dontPromptForSave)
+            {
+                var res = MessageBox.Show(Path.GetFileName(doc.Filename) + "\r\n\r\nhas been modified.\r\n" +
+                                          "Do you want to save changes?",
+                    "Save Document",
+                    MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
+                if (res == MessageBoxResult.Cancel)
+                {
+                    return false; // don't close
+                }
+
+                if (res == MessageBoxResult.No)
+                {
+                    // close but don't save
+                }
+                else
+                {
+                    if (doc.Filename == "untitled")
+                        Model.Commands.SaveAsCommand.Execute(ButtonSaveAsFile);
+                    else if (!SaveFile())
+                        returnValue = false;
+                }
+            }
+
+            doc.LastEditorLineNumber = editor.GetLineNumber();
+            if (doc.LastEditorLineNumber == -1)
+                doc.LastEditorLineNumber = 0;
+
+            tab.Tag = null;
+            TabControl.Items.Remove(tab);
+
+            if (TabControl.Items.Count == 0)
+            {
+                PreviewBrowser?.Navigate("about:blank");
+
+                Model.ActiveDocument = null;
+                StatusStats.Text = null;
+
+                Title = "Markdown Monster" +
+                        (UnlockKey.Unlocked ? "" : " (unregistered)");
+            }
+
+            if (rebindTabHeaders)
+                BindTabHeaders();
+
+            Model.OnPropertyChanged(nameof(AppModel.IsTabOpen));
+            Model.OnPropertyChanged(nameof(AppModel.IsNoTabOpen));
+
+            return returnValue; // close
+        }
+
+        /// <summary>
+        /// Closes a tab and ask for confirmation if the tab doc
+        /// is dirty.
+        /// </summary>
+        /// <param name="filename">
+        /// The absolute path to the file opened in the tab that
+        /// is going to be closed
+        /// </param>
+        /// <returns>true if tab can close, false if it should stay open or
+        /// filename not opened in any tab</returns>
+        public bool CloseTab(string filename)
+        {
+            TabItem tab = GetTabFromFilename(filename);
+
+            if (tab != null)
+            {
+                return CloseTab(tab);
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        public bool CloseAllTabs(TabItem allExcept = null)
+        {
+            batchTabAction = true;
+            for (int i = TabControl.Items.Count - 1; i > -1; i--)
+            {
+                var tab = TabControl.Items[i] as TabItem;
+
+                if (tab != null)
+                {
+                    if (allExcept != null && tab == allExcept)
+                        continue;
+
+                    if (!CloseTab(tab, rebindTabHeaders: false))
+                        return false;
+                }
+            }
+
+            batchTabAction = false;
+
+            return true;
+        }
+
+        /// <summary>
+        ///  Flag used to let us know we don't want to perform tab selection operations
+        /// </summary>
+        private bool batchTabAction = false;
 
         /// <summary>
         /// Retrieves an open tab based on its filename.
@@ -930,313 +1367,263 @@ namespace MarkdownMonster
         /// <returns></returns>
         public TabItem GetTabFromFilename(string filename)
         {
-            var tabList = new List<TabItem>();
-            foreach (TabItem tb in TabControl.Items)
-                tabList.Add(tb);
+            if (string.IsNullOrEmpty(filename))
+                return null;
 
-            return tabList
-                .FirstOrDefault(tb => ((MarkdownDocumentEditor)tb.Tag).MarkdownDocument.Filename.ToLower() == filename.ToLower());
+            if (filename == "Preview")
+                return PreviewTab;
+            
+            TabItem tab = null;
+            foreach (TabItem tabItem in TabControl.Items.Cast<TabItem>())
+            {
+                var markdownEditor = tabItem.Tag as MarkdownDocumentEditor;
+                if (markdownEditor == null)
+                    continue;
+
+                if (markdownEditor.MarkdownDocument.Filename.Equals(filename,
+                    StringComparison.InvariantCultureIgnoreCase))
+                {
+                    tab = tabItem;
+                    break;
+                }
+            }
+
+            return tab;
         }
 
         /// <summary>
         /// Binds all Tab Headers
         /// </summary>
         public void BindTabHeaders()
-		{
-			var tabList = new List<TabItem>();
-			foreach (TabItem tb in TabControl.Items)
-				tabList.Add(tb);
+        {
+            var tabList = new List<TabItem>();
+            foreach (TabItem tb in TabControl.Items)
+                tabList.Add(tb);
 
-			var tabItems = tabList
-				.Select(tb => Path.GetFileName(((MarkdownDocumentEditor) tb.Tag).MarkdownDocument.Filename.ToLower()))
-				.GroupBy(fn => fn)
-				.Select(tbCol => new
-				{
-					Filename = tbCol.Key,
-					Count = tbCol.Count()
-				});
+            var tabItems = tabList
+                .Where(tb=> tb.Tag is MarkdownDocumentEditor )
+                .Select(tb => Path.GetFileName(((MarkdownDocumentEditor) tb.Tag).MarkdownDocument.Filename.ToLower()))
+                .GroupBy(fn => fn)
+                .Select(tbCol => new
+                {
+                    Filename = tbCol.Key,
+                    Count = tbCol.Count()
+                });
 
-			foreach (TabItem tb in TabControl.Items)
-			{
-				var doc = ((MarkdownDocumentEditor) tb.Tag).MarkdownDocument;
+            foreach (TabItem tb in TabControl.Items)
+            {
+                var doc = ((MarkdownDocumentEditor) tb.Tag)?.MarkdownDocument;
+                if (doc == null)
+                    continue;
 
-				if (tabItems.Any(ti => ti.Filename == Path.GetFileName(doc.Filename.ToLower()) &&
-				                       ti.Count > 1))
+                if (tabItems.Any(ti => ti.Filename == Path.GetFileName(doc.Filename.ToLower()) &&
+                                       ti.Count > 1))
 
-					SetTabHeaderBinding(tb, doc, "FilenamePathWithIndicator");
-				else
-					SetTabHeaderBinding(tb, doc, "FilenameWithIndicator");
-			}
-		}
+                    SetTabHeaderBinding(tb, doc, "FilenamePathWithIndicator");
+                else
+                    SetTabHeaderBinding(tb, doc, "FilenameWithIndicator");
+            }
+        }
 
-		/// <summary>
-		/// Binds the tab header to an expression
-		/// </summary>
-		/// <param name="tab"></param>
-		/// <param name="document"></param>
-		/// <param name="propertyPath"></param>
-		private void SetTabHeaderBinding(TabItem tab, MarkdownDocument document,
-			string propertyPath = "FilenameWithIndicator")
-		{
-			if (document == null || tab == null)
-				return;
 
-		   
-			try
-			{                
-			    var grid = new Grid();
+        /// <summary>
+        /// Binds the tab header to an expression
+        /// </summary>
+        /// <param name="tab"></param>
+        /// <param name="document"></param>
+        /// <param name="propertyPath"></param>
+        private void SetTabHeaderBinding(TabItem tab, MarkdownDocument document,
+            string propertyPath = "FilenameWithIndicator",
+            ImageSource icon = null)
+        {
+            if (document == null || tab == null)
+                return;
+            var editor = tab.Tag as MarkdownDocumentEditor;
+
+            try
+            {
+                var grid = new Grid();
                 tab.Header = grid;
-			    var col1 = new ColumnDefinition {Width = new GridLength(20)};
-			    var col2 = new ColumnDefinition {Width = GridLength.Auto};
+                var col1 = new ColumnDefinition {Width = new GridLength(20)};
+                var col2 = new ColumnDefinition {Width = GridLength.Auto};
                 grid.ColumnDefinitions.Add(col1);
-			    grid.ColumnDefinitions.Add(col2);
-
-			    var img = new Image()
-			    {
-			        Source = FolderStructure.IconList.GetIconFromFile(document.Filename),
-                    Height=16,
-                    Margin = new Thickness(0,1,5,0)
-
-			    };
-			    img.SetValue(Grid.ColumnProperty, 0);
-			    grid.Children.Add(img);
+                grid.ColumnDefinitions.Add(col2);
 
 
-			    var textBlock = new TextBlock();
-			    textBlock.SetValue(Grid.ColumnProperty, 1);
+                if (icon == null)
+                {
+                    icon = FolderStructure.IconList.GetIconFromFile(document.Filename);
+                    if (icon == AssociatedIcons.DefaultIcon)
+                        icon = FolderStructure.IconList.GetIconFromType(Model.ActiveEditor.EditorSyntax);
+                }
+
+                var img = new Image()
+                {
+                    Source = icon,
+                    Height = 16,
+                    Margin = new Thickness(0, 1, 5, 0)
+                };
+                img.SetValue(Grid.ColumnProperty, 0);
+                grid.Children.Add(img);
+               
+
+                var textBlock = new TextBlock();
+                textBlock.SetValue(Grid.ColumnProperty, 1);
 
                 var headerBinding = new Binding
-			    {
-			        Source = document,
-			        Path = new PropertyPath(propertyPath),
-			        Mode = BindingMode.OneWay
-			    };
-			    
+                {
+                    Source = document,
+                    Path = new PropertyPath(propertyPath),
+                    Mode = BindingMode.OneWay
+                };
                 BindingOperations.SetBinding(textBlock, TextBlock.TextProperty, headerBinding);
-			    grid.Children.Add(textBlock);
 
-			    //BindingOperations.SetBinding(tab, HeaderedContentControl.HeaderProperty, headerBinding);
-			}
-			catch (Exception ex)
-			{
-				mmApp.Log("SetTabHeaderBinding Failed. Assigning explicit path", ex);
-				tab.Header = document.FilenameWithIndicator;
-			}
-		}
-
-		/// <summary>
-		///  Flag used to let us know we don't want to perform tab selection operations
-		/// </summary>
-		private bool batchTabAction = false;
-
-        public bool CloseAllTabs(TabItem allExcept = null)
-		{
-			batchTabAction = true;
-			for (int i = TabControl.Items.Count - 1; i > -1; i--)
-			{
-				var tab = TabControl.Items[i] as TabItem;
-
-				if (tab != null)
-				{
-					if (allExcept != null && tab == allExcept)
-						continue;
-
-					if (!CloseTab(tab, rebindTabHeaders: false))
-						return false;
-				}
-			}
-			batchTabAction = false;
-			return true;
-		}
-
-		/// <summary>
-		/// Closes a tab and ask for confirmation if the tab doc
-		/// is dirty.
-		/// </summary>
-		/// <param name="tab"></param>
-		/// <param name="rebindTabHeaders">
-		/// When true tab headers are rebound to handle duplicate filenames
-		/// with path additions.
-		/// </param>
-		/// <returns>true if tab can close, false if it should stay open</returns>
-		public bool CloseTab(TabItem tab, bool rebindTabHeaders = true, bool dontPromptForSave = false)
-		{
-			var editor = tab?.Tag as MarkdownDocumentEditor;
-			if (editor == null)
-				return false;
-
-			bool returnValue = true;
-
-            tab.Padding = new Thickness(200);
-
-			var doc = editor.MarkdownDocument;
-
-			doc.CleanupBackupFile();
-
-			if (doc.IsDirty && !dontPromptForSave)
-			{
-				var res = MessageBox.Show(Path.GetFileName(doc.Filename) + "\r\n\r\nhas been modified.\r\n" +
-				                          "Do you want to save changes?",
-					"Save Document",
-					MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
-				if (res == MessageBoxResult.Cancel)
-				{
-					return false; // don't close
-				}
-				if (res == MessageBoxResult.No)
-				{
-					// close but don't save
-				}
-				else
-				{
-					if (doc.Filename == "untitled")
-						Model.Commands.SaveAsCommand.Execute(ButtonSaveAsFile);
-					else if (!SaveFile())
-						returnValue = false;
-				}
-			}
-
-			doc.LastEditorLineNumber = editor.GetLineNumber();
-			if (doc.LastEditorLineNumber == -1)
-				doc.LastEditorLineNumber = 0;
-
-			tab.Tag = null;
-			TabControl.Items.Remove(tab);
-
-			if (TabControl.Items.Count == 0)
-			{
-				PreviewWebBrowserControl.Visibility = Visibility.Hidden;
-				PreviewWebBrowserControl.Navigate("about:blank");
-				Model.ActiveDocument = null;
-				Title = "Markdown Monster" +
-				        (UnlockKey.Unlocked ? "" : " (unregistered)");
-			}
-
-			if (rebindTabHeaders)
-				BindTabHeaders();
-
-            Model.OnPropertyChanged(nameof(AppModel.IsTabOpen));
-		    Model.OnPropertyChanged(nameof(AppModel.IsNoTabOpen));
-
-            return returnValue; // close
-		}
-
-		/// <summary>
-		/// Closes a tab and ask for confirmation if the tab doc
-		/// is dirty.
-		/// </summary>
-		/// <param name="filename">
-		/// The absolute path to the file opened in the tab that
-		/// is going to be closed
-		/// </param>
-		/// <returns>true if tab can close, false if it should stay open or
-		/// filename not opened in any tab</returns>
-		public bool CloseTab(string filename)
-		{
-			TabItem tab = getTabItemByFileName(filename);
-
-			if (tab != null)
-			{
-				return CloseTab(tab);
-			}
-			else
-			{
-				return false;
-			}
-		}
-
-		private TabItem getTabItemByFileName(string filename)
-		{
-			TabItem tab = null;
-			foreach (TabItem tabItem in TabControl.Items.Cast<TabItem>())
-			{
-				var markdownEditor = tabItem.Tag as MarkdownDocumentEditor;
-				if (markdownEditor.MarkdownDocument.Filename.Equals(filename))
-				{
-					tab = tabItem;
-					break;
-				}
-			}
-			return tab;
-		}
-
-		private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
-		{
-			if (batchTabAction)
-				return;
-
-			var editor = GetActiveMarkdownEditor();
-			if (editor == null)
-				return;
-
-			SetWindowTitle();
-
-			foreach (var doc in Model.OpenDocuments)
-				doc.IsActive = false;
-
-			Model.ActiveDocument = editor.MarkdownDocument;
-			Model.ActiveDocument.IsActive = true;
-
-			AddRecentFile(Model.ActiveDocument?.Filename, noConfigWrite: true);
-
-			AddinManager.Current.RaiseOnDocumentActivated(Model.ActiveDocument);
-
-		    if (mmApp.Configuration.IsPreviewVisible)
-		        PreviewBrowser.PreviewMarkdown();
-
-            Model.ActiveEditor.RestyleEditor();
-
-			editor.WebBrowser.Focus();
-			editor.SetEditorFocus();
-		}
+                var fontStyleBinding = new Binding
+                {
+                    Source = editor,
+                    Path = new PropertyPath("IsPreview"),
+                    Mode = BindingMode.OneWay,
+                    Converter = new FontStyleFromBoolConverter()
+                };
+                BindingOperations.SetBinding(textBlock, TextBlock.FontStyleProperty, fontStyleBinding);
 
 
-		private void TabControlDragablz_TabItemClosing(ItemActionCallbackArgs<TabablzControl> e)
-		{
-			var tab = e.DragablzItem.DataContext as TabItem;
-			if (tab == null)
-				return;
+                var fontWeightBinding = new Binding
+                {
+                    Source = tab,
+                    Path = new PropertyPath("IsSelected"),
+                    Mode = BindingMode.OneWay,
+                    Converter = new FontWeightFromBoolConverter()
+                };
+                BindingOperations.SetBinding(textBlock, TextBlock.FontWeightProperty, fontWeightBinding);
 
-			if (!CloseTab(tab))
-				e.Cancel();
-		}
 
-		/// <summary>
-		/// Sets the Window Title followed by Markdown Monster (registration status)
-		/// by default the filename is used and it's updated whenever tabs are changed.
-		///
-		/// Generally just call this when you need to have the title updated due to
-		/// file name change that doesn't change the active tab.
-		/// </summary>
-		/// <param name="title"></param>
-		public void SetWindowTitle(string title = null)
-		{
-			if (title == null)
-			{
-				var editor = GetActiveMarkdownEditor();
-				if (editor == null)
-					return;
-				title = editor.MarkdownDocument.FilenameWithIndicator.Replace("*", "");
-			}
 
-			Title = title +
-			        "  - Markdown Monster" +
-			        (UnlockKey.Unlocked ? "" : " (unregistered)");
-		}
+                grid.Children.Add(textBlock);                
+            }
+            catch (Exception ex)
+            {
+                mmApp.Log("SetTabHeaderBinding Failed. Assigning explicit path", ex);
+                tab.Header = document.FilenameWithIndicator;
+            }
+        }
+
+
+        private void TabControlDragablz_TabItemClosing(ItemActionCallbackArgs<TabablzControl> e)
+        {
+            var tab = e.DragablzItem.DataContext as TabItem;
+            if (tab == null)
+                return;
+
+            if (!CloseTab(tab))
+                e.Cancel();
+        }
+
+        /// <summary>
+        /// Adds a new panel to the sidebar
+        /// </summary>
+        /// <param name="tabItem">Adds the TabItem. If null the tabs are refreshed and tabs removed if down to single tab</param>
+        public void AddLeftSidebarPanelTabItem(TabItem tabItem = null)
+        {
+            if (tabItem != null)
+            {
+                ControlsHelper.SetHeaderFontSize(tabItem, 14);
+                SidebarContainer.Items.Add(tabItem);
+                SidebarContainer.SelectedItem = tabItem;
+            }
+        }
+
+        /// <summary>
+        /// Adds a new panel to the right sidebar
+        /// </summary>
+        /// <param name="tabItem">Adds the TabItem. If null the tabs are refreshed and tabs removed if down to single tab</param>
+        public void AddRightSidebarPanelTabItem(TabItem tabItem = null)
+        {
+            if (tabItem != null)
+            {
+                ControlsHelper.SetHeaderFontSize(tabItem, 14);
+                RightSidebarContainer.Items.Add(tabItem);
+                RightSidebarContainer.SelectedItem = tabItem;
+            }
+
+            ShowRightSidebar();
+        }
+
+
+        /// <summary>
+        /// Sets the Window Title followed by Markdown Monster (registration status)
+        /// by default the filename is used and it's updated whenever tabs are changed.
+        ///
+        /// Generally just call this when you need to have the title updated due to
+        /// file name change that doesn't change the active tab.
+        /// </summary>
+        /// <param name="title"></param>
+        public void SetWindowTitle(string title = null)
+        {
+            if (title == null)
+            {
+                var editor = GetActiveMarkdownEditor();
+                if (editor == null)
+                    return;
+               
+                if (Model.Configuration.ShowFullDocPathInTitlebar)
+                    title = editor.MarkdownDocument.Filename;
+                else
+                    title = editor.MarkdownDocument.FilenameWithIndicator.Replace("*", "");
+            }
+            
+            Title = title +
+                    "  - Markdown Monster" +
+                    (UnlockKey.Unlocked ? "" : " (unregistered)");
+        }
 
         #endregion
+
+        #region Document Outline
+
+        private void SidebarContainer_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            var selected = SidebarContainer.SelectedItem as TabItem;
+            if (selected == null)
+                return;
+
+            if (selected.Content is DocumentOutlineSidebarControl)
+            {
+                Dispatcher.Delay(120, p =>
+                {
+                    if (DocumentOutline.Model?.DocumentOutline == null)
+                        UpdateDocumentOutline();
+                });
+            }
+
+        }
+
+        public void UpdateDocumentOutline(int editorLineNumber = -1)
+        {
+            DocumentOutline?.RefreshOutline(editorLineNumber);
+        }
+
+        #endregion
+
 
         #region Preview and UI Visibility Helpers
 
         public void PreviewMarkdown(MarkdownDocumentEditor editor = null, bool keepScrollPosition = false,
             bool showInBrowser = false, string renderedHtml = null)
         {
-            PreviewBrowser.PreviewMarkdown(editor, keepScrollPosition, showInBrowser, renderedHtml);
+            PreviewBrowser?.PreviewMarkdown(editor, keepScrollPosition, showInBrowser, renderedHtml);
         }
 
-        public void PreviewMarkdownAsync(MarkdownDocumentEditor editor = null, bool keepScrollPosition = false, string renderedHtml = null)
+        public void PreviewMarkdownAsync(MarkdownDocumentEditor editor = null, bool keepScrollPosition = false,
+            string renderedHtml = null)
         {
-            PreviewBrowser.PreviewMarkdownAsync(editor, keepScrollPosition,renderedHtml);
+            PreviewBrowser?.PreviewMarkdownAsync(editor, keepScrollPosition, renderedHtml);
+        }
+
+
+        public void Navigate(string url)
+        {
+            PreviewBrowser?.Navigate(url);
         }
 
 
@@ -1250,67 +1637,84 @@ namespace MarkdownMonster
             {
                 if (Model.Configuration.PreviewMode == PreviewModes.InternalPreview)
                 {
-                    PreviewWebBrowserControl.Visibility = Visibility.Visible;
 
-                    if (_previewBrowserWindow != null && PreviewBrowserWindow.Visibility == Visibility.Visible)
-                        PreviewBrowserWindow.Close();
-                        
-
-                    if (PreviewBrowser.WebBrowser != PreviewWebBrowserControl)
+                    if (Model.Configuration.IsPreviewVisible)
+                        Model.WindowLayout.IsPreviewVisible = true;
+                    else
                     {
-                        PreviewBrowser = new PreviewWebBrowser(PreviewWebBrowserControl);                        
-                        PreviewMarkdownAsync();
+                        Model.WindowLayout.IsPreviewVisible = false;
+                        return;
                     }
 
-                        MainWindowSeparatorColumn.Width = new GridLength(12);
+                    // check if we're already active - if not assign and preview immediately
+                    if (!(PreviewBrowser is IPreviewBrowser) )
+                    {
+                        LoadPreviewBrowser();
+                        return;
+                    }
+
+                    // close external window if it's open
+                    if (_previewBrowserWindow != null && PreviewBrowserWindow.Visibility == Visibility.Visible)
+                    {
+                        PreviewBrowserWindow.Close();
+                        _previewBrowserWindow = null;
+                        LoadPreviewBrowser();
+                        return;
+                    }
+
+                    //MainWindowSeparatorColumn.Width = new GridLength(12);
                     if (!refresh)
                     {
                         if (mmApp.Configuration.WindowPosition.SplitterPosition < 100)
                             mmApp.Configuration.WindowPosition.SplitterPosition = 600;
 
-                        if (!Model.IsPresentationMode)
-                            MainWindowPreviewColumn.Width =
-                                new GridLength(mmApp.Configuration.WindowPosition.SplitterPosition);
+                        //if (!Model.IsPresentationMode)
+                        //    MainWindowPreviewColumn.Width =
+                        //        new GridLength(mmApp.Configuration.WindowPosition.SplitterPosition);
                     }
                 }
-                else if(Model.Configuration.PreviewMode == PreviewModes.ExternalPreviewWindow)
-                {                   
-                    if (PreviewBrowser.WebBrowser != PreviewBrowserWindow.Browser)
-                    {
-                        PreviewBrowser = new PreviewWebBrowser(PreviewBrowserWindow.Browser);
-                        PreviewMarkdownAsync();
-                    }
-
+                else if (Model.Configuration.PreviewMode == PreviewModes.ExternalPreviewWindow)
+                {
+                    // make sure it's visible
+                    //bool visible = PreviewBrowserWindow.Visibility == Visibility.Visible;
                     PreviewBrowserWindow.Show();
 
-                    if (MainWindowPreviewColumn.Width.Value > 100)
-                        mmApp.Configuration.WindowPosition.SplitterPosition =
-                            Convert.ToInt32(MainWindowPreviewColumn.Width.Value);
+                    // check if we're already active - if not assign and preview immediately
+                    if (!(PreviewBrowser is PreviewBrowserWindow))
+                    {
+                        PreviewBrowser = PreviewBrowserWindow;
+                        PreviewBrowser.PreviewMarkdownAsync();
+                    }
 
-                    MainWindowSeparatorColumn.Width = new GridLength(0);
-                    MainWindowPreviewColumn.Width = new GridLength(0);
 
-                    PreviewWebBrowserControl.Navigate("about:blank");
+                    Model.WindowLayout.IsPreviewVisible = false;
+
+                    // clear the preview
+                    ((IPreviewBrowser) PreviewBrowserContainer.Children[0]).Navigate("about:blank");
                 }
             }
             else
             {
                 if (Model.Configuration.PreviewMode == PreviewModes.InternalPreview)
                 {
-                    if (MainWindowPreviewColumn.Width.Value > 100)
-                        mmApp.Configuration.WindowPosition.SplitterPosition =
-                            Convert.ToInt32(MainWindowPreviewColumn.Width.Value);
+                    Model.WindowLayout.IsPreviewVisible = false;
 
-                    MainWindowSeparatorColumn.Width = new GridLength(0);
-                    MainWindowPreviewColumn.Width = new GridLength(0);
-
-                    PreviewWebBrowserControl.Navigate("about:blank");
+                    // clear the preview
+                    ((IPreviewBrowser) PreviewBrowserContainer.Children[0]).Navigate("about:blank");
                 }
                 else if (Model.Configuration.PreviewMode == PreviewModes.ExternalPreviewWindow)
                 {
                     if (_previewBrowserWindow != null)
+                    {
                         PreviewBrowserWindow.Close();
+                        _previewBrowserWindow = null;
+                        PreviewBrowser = null;
+
+                        // reset preview browser to internal so it's not null
+                        //LoadPreviewBrowser();
+                    }
                 }
+
             }
         }
 
@@ -1320,14 +1724,10 @@ namespace MarkdownMonster
         /// <param name="hide"></param>
         public void ShowFolderBrowser(bool hide = false, string folder = null)
         {
+            var layoutModel = Model.WindowLayout;
             if (hide)
             {
-                if (FolderBrowserColumn.Width.Value > 20)
-                    mmApp.Configuration.FolderBrowser.WindowWidth = Convert.ToInt32(FolderBrowserColumn.Width.Value);
-
-                FolderBrowserColumn.Width = new GridLength(0);
-                FolderBrowserSeparatorColumn.Width = new GridLength(0);
-
+                layoutModel.IsLeftSidebarVisible = false;
                 mmApp.Configuration.FolderBrowser.Visible = false;
             }
             else
@@ -1343,319 +1743,352 @@ namespace MarkdownMonster
                         folder = Path.GetDirectoryName(Model.ActiveDocument.Filename);
 
                     FolderBrowser.FolderPath = folder;
-                });
+                }, DispatcherPriority.ApplicationIdle);
 
-                FolderBrowserColumn.Width = new GridLength(mmApp.Configuration.FolderBrowser.WindowWidth);
-                FolderBrowserSeparatorColumn.Width = new GridLength(14);
-                mmApp.Configuration.FolderBrowser.Visible = true;                
+                layoutModel.IsLeftSidebarVisible = true;
+                mmApp.Configuration.FolderBrowser.Visible = true;
+                SidebarContainer.SelectedIndex = 0; // folder browser tab
             }
         }
+
+        public void ShowLeftSidebar(bool hide = false)
+        {
+            if (!hide && SidebarContainer.Items.Count == 1)
+            {
+                ShowFolderBrowser();
+                return;
+            }
+
+            Model.WindowLayout.IsLeftSidebarVisible = !hide;
+        }
+
+        public void ShowRightSidebar(bool hide = false)
+        {
+            Model.WindowLayout.IsRightSidebarVisible = !hide;
+        }
+
+        public void LoadPreviewBrowser()
+        {
+            var previewBrowser = AddinManager.Current.RaiseGetPreviewBrowserControl();
+            if (previewBrowser == null || PreviewBrowser != previewBrowser)
+            {
+                if (previewBrowser == null)
+                    PreviewBrowser = new IEWebBrowserControl() {Name = "PreviewBrowser"};
+                else
+                    PreviewBrowser = previewBrowser;
+
+                if (PreviewBrowserContainer == null)
+                    PreviewBrowserContainer = new Grid();
+
+
+                PreviewBrowserContainer.Children.Clear();
+                PreviewBrowserContainer.Children.Add(PreviewBrowser as UIElement);
+
+                ShowPreviewBrowser();
+            }
+
+            // show or hide
+            PreviewMarkdownAsync();
+        }
+
         #endregion
 
         #region Worker Functions
 
-
-
-
         public MarkdownDocumentEditor GetActiveMarkdownEditor()
-		{
-			var tab = TabControl?.SelectedItem as TabItem;
-			return tab?.Tag as MarkdownDocumentEditor;
-		}
+        {
+            var tab = TabControl?.SelectedItem as TabItem;
+            return tab?.Tag as MarkdownDocumentEditor;
+        }
 
-		bool CheckForNewVersion(bool force, bool closeForm = true, int timeout = 2000)
-		{
-			var updater = new ApplicationUpdater(typeof(MainWindow));
-			bool isNewVersion = updater.IsNewVersionAvailable(!force, timeout: timeout);
-			if (isNewVersion)
-			{
-				var res = MessageBox.Show(updater.VersionInfo.Detail + "\r\n\r\n" +
-				                          "Do you want to download and install this version?",
-					updater.VersionInfo.Title,
-					MessageBoxButton.YesNo,
-					MessageBoxImage.Information);
+        bool CheckForNewVersion(bool force, bool closeForm = true, int timeout = 2000)
+        {
+            var updater = new ApplicationUpdater(typeof(MainWindow));
+            bool isNewVersion = updater.IsNewVersionAvailable(!force, timeout: timeout);
+            if (isNewVersion)
+            {
+                var res = MessageBox.Show(updater.VersionInfo.Detail + "\r\n\r\n" +
+                                          "Do you want to download and install this version?",
+                    updater.VersionInfo.Title,
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information);
 
-				if (res == MessageBoxResult.Yes)
-				{
-					ShellUtils.GoUrl(mmApp.Urls.InstallerDownloadUrl);
+                if (res == MessageBoxResult.Yes)
+                {
+                    ShellUtils.GoUrl(mmApp.Urls.InstallerDownloadUrl);
 
-					if (closeForm)
-						Close();
-				}
-			}
-			mmApp.Configuration.ApplicationUpdates.LastUpdateCheck = DateTime.UtcNow.Date;
+                    if (closeForm)
+                        Close();
+                }
+            }
 
-			return isNewVersion;
-		}
+            mmApp.Configuration.ApplicationUpdates.LastUpdateCheck = DateTime.UtcNow.Date;
 
-		/// <summary>
-		/// Check to see if the window is visible in the bounds of the
-		/// virtual screen space. If not adjust to main monitor off 0 position.
-		/// </summary>
-		/// <returns></returns>
-		void FixMonitorPosition()
-		{
-			var virtualScreenHeight = SystemParameters.VirtualScreenHeight;
-			var virtualScreenWidth = SystemParameters.VirtualScreenWidth;
+            return isNewVersion;
+        }
+
+        /// <summary>
+        /// Check to see if the window is visible in the bounds of the
+        /// virtual screen space. If not adjust to main monitor off 0 position.
+        /// </summary>
+        /// <returns></returns>
+        void FixMonitorPosition()
+        {
+            var virtualScreenHeight = SystemParameters.VirtualScreenHeight;
+            var virtualScreenWidth = SystemParameters.VirtualScreenWidth;
 
 
-			if (Left > virtualScreenWidth - 150)
-				Left = 20;
-			if (Top > virtualScreenHeight - 150)
-				Top = 20;
+            if (Left > virtualScreenWidth - 150)
+                Left = 20;
+            if (Top > virtualScreenHeight - 150)
+                Top = 20;
 
-			if (Left < SystemParameters.VirtualScreenLeft)
-				Left = SystemParameters.VirtualScreenLeft;
-			if (Top < SystemParameters.VirtualScreenTop)
-				Top = SystemParameters.VirtualScreenTop;
+            if (Left < SystemParameters.VirtualScreenLeft)
+                Left = SystemParameters.VirtualScreenLeft;
+            if (Top < SystemParameters.VirtualScreenTop)
+                Top = SystemParameters.VirtualScreenTop;
 
-			if (Width > virtualScreenWidth)
-				Width = virtualScreenWidth - 40;
-			if (Height > virtualScreenHeight)
-				Height = virtualScreenHeight - 40;
-		}
+            if (Width > virtualScreenWidth)
+                Width = virtualScreenWidth - 40;
+            if (Height > virtualScreenHeight)
+                Height = virtualScreenHeight - 40;
+        }
 
-		#endregion
+        #endregion
 
-		#region Button Handlers
+        #region Button Handlers
 
-		/// <summary>
-		/// Generic button handler that handles a number of simple
-		/// tasks in a single method to minimize class noise.
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
-		public void Button_Handler(object sender, RoutedEventArgs e)
-		{
-			var button = sender;
-			if (button == null )
-				return;
+        /// <summary>
+        /// Generic button handler that handles a number of simple
+        /// tasks in a single method to minimize class noise.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        public void Button_Handler(object sender, RoutedEventArgs e)
+        {
+            var button = sender;
+            if (button == null)
+                return;
 
-			if (button == ButtonOpenFromHtml)
-			{
-				var fd = new OpenFileDialog
-				{
-					DefaultExt = ".htm",
-					Filter = "Html files (*.htm,*.html)|*.htm;*.html|" +
-					         "All files (*.*)|*.*",
-					CheckFileExists = true,
-					RestoreDirectory = true,
-					Multiselect = true,
-					Title = "Open Html as Markdown"
-				};
+            if (button == ButtonOpenFromHtml)
+            {
+                var fd = new OpenFileDialog
+                {
+                    DefaultExt = ".htm",
+                    Filter = "Html files (*.htm,*.html)|*.htm;*.html|" +
+                             "All files (*.*)|*.*",
+                    CheckFileExists = true,
+                    RestoreDirectory = true,
+                    Multiselect = true,
+                    Title = "Open Html as Markdown"
+                };
 
-				if (!string.IsNullOrEmpty(mmApp.Configuration.LastFolder))
-					fd.InitialDirectory = mmApp.Configuration.LastFolder;
+                if (!string.IsNullOrEmpty(mmApp.Configuration.LastFolder))
+                    fd.InitialDirectory = mmApp.Configuration.LastFolder;
 
-				var res = fd.ShowDialog();
-				if (res == null || !res.Value)
-					return;
+                var res = fd.ShowDialog();
+                if (res == null || !res.Value)
+                    return;
 
-				var html = File.ReadAllText(fd.FileName);
+                var html = File.ReadAllText(fd.FileName);
 
-				var markdown = MarkdownUtilities.HtmlToMarkdown(html);
+                var markdown = MarkdownUtilities.HtmlToMarkdown(html);
 
-				OpenTab("untitled");
-				var editor = GetActiveMarkdownEditor();
-				editor.MarkdownDocument.CurrentText = markdown;
-			    PreviewBrowser.PreviewMarkdown();
-			}
+                OpenTab("untitled");
+                var editor = GetActiveMarkdownEditor();
+                editor.MarkdownDocument.CurrentText = markdown;
+                PreviewBrowser.PreviewMarkdown();
+            }
             else if (button == ButtonRecentFiles)
-			{
+            {
                 var mi = button as MenuItem;
-			    UpdateRecentDocumentsContextMenu();
-                mi.IsSubmenuOpen = true;
-			}
-            else if (button == ToolbarButtonRecentFiles)
-			{
-			    var mi =  button as Button;
                 UpdateRecentDocumentsContextMenu();
-			    mi.ContextMenu.IsOpen = true;
-			}
-			else if (button == ButtonExit)
-			{
-				Close();
-			}
+                mi.IsSubmenuOpen = true;
+            }
+            else if (button == ToolbarButtonRecentFiles)
+            {
+                var mi = button as Button;
+                UpdateRecentDocumentsContextMenu();
+                mi.ContextMenu.IsOpen = true;
+            }
+            else if (button == ButtonExit)
+            {
+                Close();
+            }
 
-			else if (button == MenuOpenConfigFolder)
-			{
-				ShellUtils.GoUrl(mmApp.Configuration.CommonFolder);
-			}
-			else if (button == MenuOpenPreviewFolder)
-			{
-				ShellUtils.GoUrl(Path.Combine(Environment.CurrentDirectory, "PreviewThemes",
-					mmApp.Configuration.RenderTheme));
-			}
-			else if (button == MenuMarkdownMonsterSite)
-			{
-				ShellUtils.GoUrl(mmApp.Urls.WebSiteUrl);
-			}
-			else if (button == MenuBugReport)
-			{
-				ShellUtils.GoUrl(mmApp.Urls.SupportUrl);
-			}
-			else if (button == MenuCheckNewVersion)
-			{
-				ShowStatus("Checking for new version...");
-				if (!CheckForNewVersion(true, timeout: 5000))
-				{
-					ShowStatus("Your version of Markdown Monster is up to date.", 6000);
-					SetStatusIcon(FontAwesomeIcon.Check, Colors.Green);
-
-					MessageBox.Show(
-						"Your version of Markdown Monster is v" + mmApp.GetVersion() + " and you are up to date.",
-						mmApp.ApplicationName, MessageBoxButton.OK, MessageBoxImage.Information);
-				}
-			}
-			else if (button == MenuRegister)
-			{
-				Window rf = new RegistrationForm();
-				rf.Owner = this;
-				rf.ShowDialog();
-			}
-			else if (button == ButtonAbout)
-			{
-				Window about = new About();
-				about.Owner = this;
-				about.Show();
-			}
-			else if (button == Button_Find)
-			{
-				var editor = GetActiveMarkdownEditor();
-				if (editor == null)
-					return;
-				editor.ExecEditorCommand("find");
-			}
-			else if (button == Button_FindNext)
-			{
-				var editor = GetActiveMarkdownEditor();
-				if (editor == null)
-					return;
-				editor.ExecEditorCommand("findnext");
-			}
-			else if (button == Button_Replace)
-			{
-				var editor = GetActiveMarkdownEditor();
-				if (editor == null)
-					return;
-				editor.ExecEditorCommand("replace");
-			}
-			else if (button == ButtonScrollBrowserDown)
-			{
-				var editor = GetActiveMarkdownEditor();
-				if (editor == null)
-					return;
-				editor.SpecialKey("ctrl-shift-down");
-			}
-			else if (button == ButtonScrollBrowserUp)
-			{
-				var editor = GetActiveMarkdownEditor();
-				if (editor == null)
-					return;
-				editor.SpecialKey("ctrl-shift-d");
-			}
-            else if (button == ButtonWordWrap)
-			{
-			    Model.ActiveEditor?.SetWordWrap(Model.Configuration.EditorWrapText);
-			}
-            else if (button == ButtonLineNumbers)
-			{
-			    Model.ActiveEditor?.SetShowLineNumbers(Model.Configuration.EditorShowLineNumbers);
-			}
-            else if (button == ButtonShowInvisibles)
-			{
-			    Model.ActiveEditor?.SetShowInvisibles(Model.Configuration.EditorShowInvisibles);
-			}
+            else if (button == MenuOpenConfigFolder)
+            {
+                ShellUtils.GoUrl(mmApp.Configuration.CommonFolder);
+            }
+            else if (button == MenuOpenPreviewFolder)
+            {
+                ShellUtils.GoUrl(Path.Combine(Environment.CurrentDirectory, "PreviewThemes",
+                    mmApp.Configuration.PreviewTheme));
+            }
+            else if (button == MenuMarkdownMonsterSite)
+            {
+                ShellUtils.GoUrl(mmApp.Urls.WebSiteUrl);
+            }
+            else if (button == MenuBugReport)
+            {
+                ShellUtils.GoUrl(mmApp.Urls.SupportUrl);
+            }
+            else if (button == MenuCheckNewVersion)
+            {
+                ShowStatus("Checking for new version...");
+                if (!CheckForNewVersion(true, timeout: 5000))
+                {                    
+                    ShowStatusSuccess("Your version of Markdown Monster is up to date.");                   
+                    MessageBox.Show(
+                        "Your version of Markdown Monster is v" + mmApp.GetVersion() + " and you are up to date.",
+                        mmApp.ApplicationName, MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            else if (button == MenuRegister)
+            {
+                Window rf = new RegistrationForm();
+                rf.Owner = this;
+                rf.ShowDialog();
+            }
+            else if (button == ButtonAbout)
+            {
+                Window about = new About();
+                about.Owner = this;
+                about.Show();
+            }
+            else if (button == Button_Find)
+            {
+                var editor = GetActiveMarkdownEditor();
+                if (editor == null)
+                    return;
+                editor.ExecEditorCommand("find");
+            }
+            else if (button == Button_FindNext)
+            {
+                var editor = GetActiveMarkdownEditor();
+                if (editor == null)
+                    return;
+                editor.ExecEditorCommand("findnext");
+            }
+            else if (button == Button_Replace)
+            {
+                var editor = GetActiveMarkdownEditor();
+                if (editor == null)
+                    return;
+                editor.ExecEditorCommand("replace");
+            }
+            else if (button == ButtonScrollBrowserDown)
+            {
+                var editor = GetActiveMarkdownEditor();
+                if (editor == null)
+                    return;
+                editor.SpecialKey("ctrl-shift-down");
+            }
+            else if (button == ButtonScrollBrowserUp)
+            {
+                var editor = GetActiveMarkdownEditor();
+                if (editor == null)
+                    return;
+                editor.SpecialKey("ctrl-shift-d");
+            }
+            else if (button == ButtonDocumentOutlineVisible)
+            {
+                // Only activate/deactivate the tab
+                if (Model.ActiveEditor != null && Model.ActiveEditor.EditorSyntax == "markdown" &&
+                    Model.Configuration.IsDocumentOutlineVisible)
+                    SidebarContainer.SelectedItem = TabDocumentOutline;
+                else
+                    SidebarContainer.SelectedItem = TabFolderBrowser;
+            }
+            else if (button == ButtonWordWrap || button == ButtonLineNumbers || button == ButtonShowInvisibles)
+            {
+                Model.ActiveEditor?.RestyleEditor();
+            }
             else if (button == ButtonStatusEncrypted)
-			{
-			    var dialog = new FilePasswordDialog(Model.ActiveDocument,false)
-			    {
-			        Owner = this
-			    };
-			    dialog.ShowDialog();
-			}
-            else if (button == MenuItemPreviewConfigureSync)
-			{
-			    ComboBoxPreviewSyncModes.Focus();
-                ComboBoxPreviewSyncModes.IsDropDownOpen = true;
-			}
-			//else if (button == ButtonRefreshBrowser)
-			//{
-			//	var editor = GetActiveMarkdownEditor();
-			//	if (editor == null)
-			//		return;
+            {
+                var dialog = new FilePasswordDialog(Model.ActiveDocument, false)
+                {
+                    Owner = this
+                };
+                dialog.ShowDialog();
+            }
+            //else if (button == ButtonRefreshBrowser)
+            //{
+            //	var editor = GetActiveMarkdownEditor();
+            //	if (editor == null)
+            //		return;
 
-			//	this.PreviewMarkdownAsync();
-			//}
-			else if (button == MenuDocumentation)
-				ShellUtils.GoUrl(mmApp.Urls.DocumentationBaseUrl);
-			else if (button == MenuMarkdownBasics)
-				ShellUtils.GoUrl(mmApp.Urls.DocumentationBaseUrl + "_4ne1eu2cq.htm");
-			else if (button == MenuCreateAddinDocumentation)
-				ShellUtils.GoUrl(mmApp.Urls.DocumentationBaseUrl + "_4ne0s0qoi.htm");
-			else if (button == MenuShowSampleDocument)
-				OpenTab(Path.Combine(Environment.CurrentDirectory, "SampleMarkdown.md"));
-			else if (button == MenuShowErrorLog)
-			{
-				string logFile = Path.Combine(mmApp.Configuration.CommonFolder, "MarkdownMonsterErrors.txt");
-				if (File.Exists(logFile))
-					ShellUtils.GoUrl(logFile);
-				else
-					MessageBox.Show("There are no errors in your log file.",
-						mmApp.ApplicationName,
-						MessageBoxButton.OK,
-						MessageBoxImage.Information);
-			}
-            else if(button == MenuResetConfiguration)
-		    {
-		        if (MessageBox.Show("This operation will reset all of your configuration settings and shut down Markdown Monster.\r\n\r\nAre you sure?",
-		                "Reset Configuration Settings",
-		                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes)
-		        {
-		            mmApp.Configuration.Backup();
-		            mmApp.Configuration.Reset();
-		        }
-		    }
+            //	this.PreviewMarkdownAsync();
+            //}
+            else if (button == MenuDocumentation)
+                ShellUtils.GoUrl(mmApp.Urls.DocumentationBaseUrl);
+            else if (button == MenuMarkdownBasics)
+                ShellUtils.GoUrl(mmApp.Urls.DocumentationBaseUrl + "_4ne1eu2cq.htm");
+            else if (button == MenuCreateAddinDocumentation)
+                ShellUtils.GoUrl(mmApp.Urls.DocumentationBaseUrl + "_4ne0s0qoi.htm");
+            else if (button == MenuShowSampleDocument)
+                OpenTab(Path.Combine(Environment.CurrentDirectory, "SampleMarkdown.md"));
+            else if (button == MenuShowErrorLog)
+            {
+                string logFile = Path.Combine(mmApp.Configuration.CommonFolder, "MarkdownMonsterErrors.txt");
+                if (File.Exists(logFile))
+                    ShellUtils.GoUrl(logFile);
+                else
+                    MessageBox.Show("There are no errors in your log file.",
+                        mmApp.ApplicationName,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+            }
+            else if (button == MenuResetConfiguration)
+            {
+                if (MessageBox.Show(
+                        "This operation will reset all of your configuration settings and shut down Markdown Monster.\r\n\r\nAre you sure?",
+                        "Reset Configuration Settings",
+                        MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes)
+                {
+                    mmApp.Configuration.Backup();
+                    mmApp.Configuration.Reset();
+                }
+            }
             else if (button == MenuBackupConfiguration)
-			{
-			    string filename = mmApp.Configuration.Backup();
-			    ShowStatus($"Configuration backed up to: {Path.GetFileName(filename)}",6000);
-			    mmFileUtils.OpenFileInExplorer(filename);
-			}
-		}
-
-        
-
-		private void ButtonSpellCheck_Click(object sender, RoutedEventArgs e)
-		{
-			foreach (TabItem tab in TabControl.Items)
-			{
-				var editor = tab.Tag as MarkdownDocumentEditor;
-				editor?.RestyleEditor();
-			}
-		}
+            {
+                string filename = mmApp.Configuration.Backup();
+                ShowStatus($"Configuration backed up to: {Path.GetFileName(filename)}", mmApp.Configuration.StatusMessageTimeout);
+                mmFileUtils.OpenFileInExplorer(filename);
+            }
+        }
 
 
+        private void ButtonSpellCheck_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (TabItem tab in TabControl.Items)
+            {
+                var editor = tab.Tag as MarkdownDocumentEditor;
+                editor?.RestyleEditor();
+            }
+        }
 
-		private void Button_CommandWindow(object sender, RoutedEventArgs e)
-		{
-			var editor = GetActiveMarkdownEditor();
-			if (editor == null)
-				return;
 
 
-			string path = Path.GetDirectoryName(editor.MarkdownDocument.Filename);
-			mmFileUtils.OpenTerminal(path);
-		}
+        private void Button_CommandWindow(object sender, RoutedEventArgs e)
+        {
+            var editor = GetActiveMarkdownEditor();
+            if (editor == null)
+                return;
 
-	    private void Button_OpenExplorer(object sender, RoutedEventArgs e)
-		{
-			var editor = GetActiveMarkdownEditor();
-			if (editor == null)
-				return;
 
-		    mmFileUtils.OpenFileInExplorer(editor.MarkdownDocument.Filename);
-		}
+            string path = Path.GetDirectoryName(editor.MarkdownDocument.Filename);
+            mmFileUtils.OpenTerminal(path);
+        }
+
+        private void Button_OpenExplorer(object sender, RoutedEventArgs e)
+        {
+            var editor = GetActiveMarkdownEditor();
+            if (editor == null)
+                return;
+
+            mmFileUtils.OpenFileInExplorer(editor.MarkdownDocument.Filename);
+        }
 
 
         private void Button_OpenFolderBrowser(object sender, RoutedEventArgs e)
@@ -1664,174 +2097,232 @@ namespace MarkdownMonster
             if (editor == null)
                 return;
 
+            SidebarContainer.SelectedItem = TabFolderBrowser;
             ShowFolderBrowser(folder: Path.GetDirectoryName(editor.MarkdownDocument.Filename));
         }
 
         internal void Button_PasteMarkdownFromHtml(object sender, RoutedEventArgs e)
-		{
-			var editor = GetActiveMarkdownEditor();
-			if (editor == null)
-				return;
+        {
+            var editor = GetActiveMarkdownEditor();
+            if (editor == null)
+                return;
 
-			string html = null;
-			if (Clipboard.ContainsText(TextDataFormat.Html))
-				html = Clipboard.GetText(TextDataFormat.Html);
+            string html = null;
+            if (Clipboard.ContainsText(TextDataFormat.Html))
+                html = Clipboard.GetText(TextDataFormat.Html);
 
-			if (!string.IsNullOrEmpty(html))
-				html = StringUtils.ExtractString(html, "<!--StartFragment-->", "<!--EndFragment-->");
-			else
-				html = Clipboard.GetText();
+            if (!string.IsNullOrEmpty(html))
+                html = StringUtils.ExtractString(html, "<!--StartFragment-->", "<!--EndFragment-->");
+            else
+                html = Clipboard.GetText();
 
-			if (string.IsNullOrEmpty(html))
-				return;
+            if (string.IsNullOrEmpty(html))
+                return;
 
-			var markdown = MarkdownUtilities.HtmlToMarkdown(html);
+            var markdown = MarkdownUtilities.HtmlToMarkdown(html);
 
-			editor.SetSelection(markdown);
-			editor.SetEditorFocus();
+            editor.SetSelection(markdown);
+            editor.SetEditorFocus();
 
             PreviewBrowser.PreviewMarkdownAsync(editor, true);
-		}        
-		#endregion
+        }
 
-		#region Miscelleaneous Events
+        #endregion
 
-		/// <summary>
-		/// Handle drag and drop of file. Note only works when dropped on the
-		/// window - doesn't not work when dropped on the editor.
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
-		private void MainWindow_Drop(object sender, DragEventArgs e)
-		{
-			if (e.Data.GetDataPresent(DataFormats.FileDrop))
-			{
-				string[] files = (string[]) e.Data.GetData(DataFormats.FileDrop);
+        #region Miscelleaneous Events
 
-				foreach (var file in files)
-				{
-					var ext = Path.GetExtension(file.ToLower());
-					if (File.Exists(file) && mmApp.AllowedFileExtensions.Contains($",{ext},"))
-					{
-						OpenTab(file, rebindTabHeaders: true);
-					}
-				}
-			}
-		}
+        /// <summary>
+        /// Handle drag and drop of file. Note only works when dropped on the
+        /// window - doesn't not work when dropped on the editor.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void MainWindow_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                string[] files = (string[]) e.Data.GetData(DataFormats.FileDrop);
 
-		private void PreviewBrowser_SizeChanged(object sender, SizeChangedEventArgs e)
-		{
-			if (e.NewSize.Width > 100)
-			{
-				int width = Convert.ToInt32(MainWindowPreviewColumn.Width.Value);
-				if (width > 100)
-					mmApp.Configuration.WindowPosition.SplitterPosition = width;
-			}
-		}
+                foreach (var file in files)
+                {
+                    var ext = Path.GetExtension(file.ToLower());
+                    if (File.Exists(file) && mmApp.AllowedFileExtensions.Contains($",{ext},"))
+                    {
+                        OpenTab(file, rebindTabHeaders: true);
+                    }
+                }
+            }
+        }
 
-		private void EditorTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)
-		{
-			foreach (TabItem tab in TabControl.Items)
-			{
-				var editor = tab.Tag as MarkdownDocumentEditor;
-				editor?.RestyleEditor();
-			}
+        private void PreviewBrowser_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            //if (e.NewSize.Width > 100)
+            //{
+            //	int width = Convert.ToInt32(MainWindowPreviewColumn.Width.Value);
+            //	if (width > 100)
+            //		mmApp.Configuration.WindowPosition.SplitterPosition = width;
+            //}
+        }
 
-		    PreviewBrowser?.PreviewMarkdownAsync();
-		}
+        private void EditorTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            foreach (TabItem tab in TabControl.Items)
+            {
+                var editor = tab.Tag as MarkdownDocumentEditor;
+                editor?.RestyleEditor();
+            }
 
-		private void RenderTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)
-		{
-		    PreviewBrowser?.PreviewMarkdownAsync();
-		}
+            PreviewBrowser?.PreviewMarkdownAsync();
+        }
 
-	    private void AppTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)
-	    {
-	        if (DateTime.UtcNow < mmApp.Started.AddSeconds(5))
-	            return;
-            
-	        if (mmApp.Configuration.ApplicationTheme == Themes.Default)
-	            mmApp.Configuration.ApplicationTheme = Themes.Dark;
+        private void PreviewTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            PreviewBrowser?.PreviewMarkdownAsync();
+        }
 
-	        if (MessageBox.Show(
-	                "Application theme changes require that you restart.\r\n\r\nDo you want to restart Markdown Monster?",
-	                "Theme Change", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes) ==
-	            MessageBoxResult.Yes)
-	        {
-	            mmApp.Configuration.Write();
-	            Close();
-	            mmFileUtils.ExecuteProcess(Path.Combine(Environment.CurrentDirectory, "MarkdownMonster.exe"), "");
-	        }
-	    }
+        private void AppTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (DateTime.UtcNow < mmApp.Started.AddSeconds(5))
+                return;
 
-	    private void MarkdownParserName_SelectionChanged(object sender, SelectionChangedEventArgs e)
-		{
-			if (mmApp.Configuration != null && !string.IsNullOrEmpty(mmApp.Configuration.MarkdownOptions.MarkdownParserName))
-			{
-				MarkdownParserFactory.GetParser(parserAddinId: mmApp.Configuration.MarkdownOptions.MarkdownParserName,
-					forceLoad: true);
+            if (mmApp.Configuration.ApplicationTheme == Themes.Default)            
+                mmApp.Configuration.ApplicationTheme = Themes.Dark;
+
+
+            if (MessageBox.Show(
+                    "Application theme changes require that you restart.\r\n\r\nDo you want to restart Markdown Monster?",
+                    "Theme Change", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes) ==
+                MessageBoxResult.Yes)
+            {
+
+                if (mmApp.Configuration.ApplicationTheme == Themes.Light)
+                    mmApp.Configuration.EditorTheme = "visualstudio";
+                else
+                    mmApp.Configuration.EditorTheme = "twilight";
+
+                mmApp.Configuration.Write();
+                Close();
+                mmFileUtils.ExecuteProcess(Path.Combine(Environment.CurrentDirectory, "MarkdownMonster.exe"), "");
+            }
+        }
+
+        private void DocumentType_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (Model.ActiveEditor == null)
+                return;
+
+            Model.ActiveEditor.SetEditorSyntax(Model.ActiveEditor.EditorSyntax);
+            SetTabHeaderBinding(TabControl.SelectedItem as TabItem, Model.ActiveEditor.MarkdownDocument);
+        }
+
+        private void ButtonRecentFiles_SubmenuOpened(object sender, RoutedEventArgs e)
+        {
+            UpdateRecentDocumentsContextMenu();
+        }
+
+        private void LeftSidebarExpand_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            Model.Commands.OpenLeftSidebarPanelCommand.Execute(null);
+        }
+
+        private void RightSidebarExpand_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            Model.WindowLayout.IsRightSidebarVisible = true;
+            Model.WindowLayout.RightSidebarWidth = GridLengthHelper.FromInt(300);
+        }
+
+        private void MarkdownParserName_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (mmApp.Configuration != null &&
+                !string.IsNullOrEmpty(mmApp.Configuration.MarkdownOptions.MarkdownParserName))
+            {
+                MarkdownParserFactory.GetParser(parserAddinId: mmApp.Configuration.MarkdownOptions.MarkdownParserName,
+                    forceLoad: true);
                 PreviewBrowser?.PreviewMarkdownAsync();
-			}
-		}
+            }
+        }
 
 
-		private void HandleNamedPipe_OpenRequest(string filesToOpen)
-		{
+        private void HandleNamedPipe_OpenRequest(string filesToOpen)
+        {
             Dispatcher.Invoke(() =>
-			{
-				if (!string.IsNullOrEmpty(filesToOpen))
-				{
+            {
+                if (!string.IsNullOrEmpty(filesToOpen))
+                {
                     var parms = StringUtils.GetLines(filesToOpen.Trim());
 
-				    OpenFilesFromCommandLine(parms);
-				    BindTabHeaders();
-				}
+                    OpenFilesFromCommandLine(parms);
+                    BindTabHeaders();
+                }
 
-				Topmost = true;
+                Topmost = true;
 
-				if (WindowState == WindowState.Minimized)
-					WindowState = WindowState.Normal;
+                if (WindowState == WindowState.Minimized)
+                    WindowState = WindowState.Normal;
 
-				Activate();
+                Activate();
 
-				// restore out of band
-				Dispatcher.BeginInvoke(new Action(() => { Topmost = false; }),DispatcherPriority.ApplicationIdle);
-			});
-		}
+                // restore out of band
+                Dispatcher.BeginInvoke(new Action(() => { Topmost = false; }), DispatcherPriority.ApplicationIdle);
+            });
+        }
 
-       
-
+        
         public List<MenuItem> GenerateContextMenuItemsFromOpenTabs(ContextMenu ctx = null)
         {
             var menuItems = new List<MenuItem>();
             var icons = new AssociatedIcons();
             var selectedTab = TabControl.SelectedItem as TabItem;
-            
+
             var headers = TabControl.GetOrderedHeaders();
             foreach (var hd in headers)
             {
                 var tab = hd.Content as TabItem;
 
-                var doc = tab.Tag as MarkdownDocumentEditor;
-                if (doc == null) continue;
-
-                var filename = doc.MarkdownDocument.FilenamePathWithIndicator;
-                var icon = icons.GetIconFromFile(doc.MarkdownDocument.Filename);
-
-                var sp = new StackPanel {Orientation = Orientation.Horizontal};
-                sp.Children.Add(new Image
+                StackPanel sp;
+                string commandParameter;
+                if (tab == PreviewTab)
                 {
-                    Source = icon,
-                    Width = 16,
-                    Height = 16,
-                    Margin = new Thickness(0, 0, 20, 0)
-                });
-                sp.Children.Add(new TextBlock {Text = filename});
+                    var icon = (tab.Header as Grid).FindChild<Image>("IconImage")?.Source;
+                    var txt = (tab.Header as Grid).FindChild<TextBlock>("HeaderText").Text;
+                    
+                    sp = new StackPanel { Orientation = Orientation.Horizontal };
+                    sp.Children.Add(new Image
+                    {
+                        Source = icon,
+                        Width = 16,
+                        Height = 16,
+                        Margin = new Thickness(0, 0, 20, 0)
+                    });
+                    sp.Children.Add(new TextBlock { Text = txt });
+                    commandParameter = "Preview";
+                }
+                else
+                {
+
+                    var doc = tab.Tag as MarkdownDocumentEditor;
+                    if (doc == null) continue;
+
+                    var filename = doc.MarkdownDocument.FilenamePathWithIndicator;
+                    var icon = icons.GetIconFromFile(doc.MarkdownDocument.Filename);
+
+                    sp = new StackPanel {Orientation = Orientation.Horizontal};
+                    sp.Children.Add(new Image
+                    {
+                        Source = icon,
+                        Width = 16,
+                        Height = 16,
+                        Margin = new Thickness(0, 0, 20, 0)
+                    });
+                    sp.Children.Add(new TextBlock {Text = filename});
+                    commandParameter = doc.MarkdownDocument.Filename;
+                }
+
 
                 var mi = new MenuItem();
                 mi.Header = sp;
                 mi.Command = Model.Commands.TabControlFileListCommand;
-                mi.CommandParameter = doc.MarkdownDocument.Filename;
+                mi.CommandParameter = commandParameter;
                 if (tab == selectedTab)
                 {
                     mi.FontWeight = FontWeights.Bold;
@@ -1850,78 +2341,154 @@ namespace MarkdownMonster
 
         DebounceDispatcher debounce = new DebounceDispatcher();
 
-		public void ShowStatus(string message = null, int milliSeconds = 0)
-		{
-			if (message == null)
-			{
-				message = "Ready";
-				SetStatusIcon();
-			}
+        public void ShowStatus(string message = null, int milliSeconds = 0,
+            FontAwesomeIcon icon = FontAwesomeIcon.None,
+            Color color = default(Color),
+            bool spin = false)
+        {
+            if (color == default(Color))
+                color = Colors.Green;
 
-			StatusText.Text = message;
+            if (icon != FontAwesomeIcon.None)
+                SetStatusIcon(icon, color, spin);
 
-			if (milliSeconds > 0)
-			{
-                debounce.Debounce(milliSeconds,(win) =>
-                {
-                        var window = win as MainWindow;
-                        window.ShowStatus(null, 0);
-                }, this);
-                //            Dispatcher.DelayWithPriority(milliSeconds, (win) =>
-                //{
-                //	var window = win as MainWindow;
-                //	window.ShowStatus(null, 0);
-                //}, this);
+            if (message == null)
+            {
+                message = "Ready";
+                SetStatusIcon();
             }
-			WindowUtilities.DoEvents();
-		}
 
-		/// <summary>
-		/// Status the statusbar icon on the left bottom to some indicator
-		/// </summary>
-		/// <param name="icon"></param>
-		/// <param name="color"></param>
-		/// <param name="spin"></param>
-		public void SetStatusIcon(FontAwesomeIcon icon, Color color, bool spin = false)
-		{
-			StatusIcon.Icon = icon;
-			StatusIcon.Foreground = new SolidColorBrush(color);
-			if (spin)
-				StatusIcon.SpinDuration = 1;
+            StatusText.Text = message;
 
-			StatusIcon.Spin = spin;
-		}
+            if (milliSeconds > 0)
+            {
+                // debounce rather than delay so if something else displays
+                // a message the delay timer is 'reset'
+                debounce.Debounce(milliSeconds, (win) =>
+                {
+                    var window = win as MainWindow;
+                    if (window == null)
+                        return;                    
+                    window.ShowStatus(null, 0);
+                }, this);
+            }
 
-		/// <summary>
-		/// Resets the Status bar icon on the left to its default green circle
-		/// </summary>
-		public void SetStatusIcon()
-		{
-			StatusIcon.Icon = FontAwesomeIcon.Circle;
-			StatusIcon.Foreground = new SolidColorBrush(Colors.Green);
-			StatusIcon.Spin = false;
-			StatusIcon.SpinDuration = 0;
-			StatusIcon.StopSpin();
-		}
+            WindowUtilities.DoEvents();
+        }
 
-		/// <summary>
-		/// Helper routine to show a Metro Dialog. Note this dialog popup is fully async!
-		/// </summary>
-		/// <param name="title"></param>
-		/// <param name="message"></param>
-		/// <param name="style"></param>
-		/// <param name="settings"></param>
-		/// <returns></returns>
-		public async Task<MessageDialogResult> ShowMessageOverlayAsync(string title, string message,
-			MessageDialogStyle style = MessageDialogStyle.Affirmative,
-			MetroDialogSettings settings = null)
-		{
-			return await this.ShowMessageAsync(title, message, style, settings);
-		}
+        /// <summary>
+        /// Displays an error message using common defaults for a timeout milliseconds
+        /// </summary>
+        /// <param name="message">Message to display</param>
+        /// <param name="timeout">optional timeout</param>
+        /// <param name="icon">optional icon (warning)</param>
+        /// <param name="color">optional color (firebrick)</param>
+        public void ShowStatusError(string message, int timeout = -1, FontAwesomeIcon icon = FontAwesomeIcon.Warning, Color color = default(Color))
+        {
+            if (timeout == -1)
+                timeout = mmApp.Configuration.StatusMessageTimeout;
+
+            if (color == default(Color))
+                color = Colors.Firebrick;
+
+            ShowStatus(message, timeout, icon, color);
+        }
+
+        /// <summary>
+        /// Shows a success message with a green check icon for the timeout
+        /// </summary>
+        /// <param name="message">Message to display</param>
+        /// <param name="timeout">optional timeout</param>
+        /// <param name="icon">optional icon (warning)</param>
+        /// <param name="color">optional color (firebrick)</param>
+        public void ShowStatusSuccess(string message, int timeout = -1, FontAwesomeIcon icon = FontAwesomeIcon.CheckCircle, Color color = default(Color))
+        {
+            if (timeout == -1)
+                timeout = mmApp.Configuration.StatusMessageTimeout;
+
+            if (color == default(Color))
+                color = Colors.Green;
+
+            ShowStatus(message, timeout, icon, color);
+        }
+
+
+        /// <summary>
+        /// Displays an Progress message using common defaults including a spinning icon
+        /// </summary>
+        /// <param name="message">Message to display</param>
+        /// <param name="timeout">optional timeout</param>
+        /// <param name="icon">optional icon (warning)</param>
+        /// <param name="color">optional color (firebrick)</param>
+        /// <param name="spin"></param>
+        public void ShowStatusProgress(string message, int timeout = -1, FontAwesomeIcon icon = FontAwesomeIcon.CircleOutlineNotch, Color color = default(Color), bool spin = true)
+        {
+            if (timeout == -1)
+                timeout = mmApp.Configuration.StatusMessageTimeout;
+
+            if (color == default(Color))
+                color = Colors.Goldenrod;
+
+            ShowStatus(message, timeout, icon, color,spin);
+        }
+
+
+        //public void ShowStatus(string message = null, int milliSeconds = 0,
+        //    FontAwesomeIcon icon = FontAwesomeIcon.None,
+        //    Color color = default(Color),
+        //    bool spin = false)
+        //{
+
+
+        //    ShowStatus(message, milliSeconds);
+        //}
+
+        /// <summary>
+        /// Status the statusbar icon on the left bottom to some indicator
+        /// </summary>
+        /// <param name="icon"></param>
+        /// <param name="color"></param>
+        /// <param name="spin"></param>
+        public void SetStatusIcon(FontAwesomeIcon icon, Color color, bool spin = false)
+        {
+            StatusIcon.Icon = icon;
+            StatusIcon.Foreground = new SolidColorBrush(color);
+            if (spin)
+                StatusIcon.SpinDuration = 2;
+
+            StatusIcon.Spin = spin;
+        }
+
+        /// <summary>
+        /// Resets the Status bar icon on the left to its default green circle
+        /// </summary>
+        public void SetStatusIcon()
+        {
+            StatusIcon.Icon = FontAwesomeIcon.Circle;
+            StatusIcon.Foreground = new SolidColorBrush(Colors.Green);
+            StatusIcon.Spin = false;
+            StatusIcon.SpinDuration = 0;
+            StatusIcon.StopSpin();
+        }
+
+        /// <summary>
+        /// Helper routine to show a Metro Dialog. Note this dialog popup is fully async!
+        /// </summary>
+        /// <param name="title"></param>
+        /// <param name="message"></param>
+        /// <param name="style"></param>
+        /// <param name="settings"></param>
+        /// <returns></returns>
+        public async Task<MessageDialogResult> ShowMessageOverlayAsync(string title, string message,
+            MessageDialogStyle style = MessageDialogStyle.Affirmative,
+            MetroDialogSettings settings = null)
+        {
+            return await this.ShowMessageAsync(title, message, style, settings);
+        }
 
         private void StatusZoomLevel_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            mmApp.Configuration.EditorZoomLevel = 100;
+            mmApp.Configuration.Editor.ZoomLevel = 100;
             Model.ActiveEditor?.RestyleEditor();
         }
 
@@ -1931,7 +2498,7 @@ namespace MarkdownMonster
             text = text.Replace("%", "");
             if (int.TryParse(text, out int num))
             {
-                Model.Configuration.EditorZoomLevel = num;
+                Model.Configuration.Editor.ZoomLevel = num;
                 Model.ActiveEditor?.RestyleEditor();
             }
         }
@@ -1942,14 +2509,50 @@ namespace MarkdownMonster
             text = text.Replace("%", "");
 
             if (int.TryParse(text, out int num))
-                Model.Configuration.EditorZoomLevel = num;
+                Model.Configuration.Editor.ZoomLevel = num;
 
             Model.ActiveEditor?.RestyleEditor();
         }
 
         #endregion
-    }
 
+
+        private void ButtonLangugeDropDown_Click(object sender, RoutedEventArgs e)
+        {
+            var ctx = new ContextMenu();
+
+            var basePath = Path.Combine(App.InitialStartDirectory, "Editor");
+
+            foreach (var lang in SpellChecker.DictionaryDownloads)
+            {
+                var fname = Path.Combine(basePath, lang.Code + ".dic");
+                bool exists = File.Exists(fname);
+
+                string header = lang.Name;
+                if (!exists)
+                    header = header + " ↆ";
+
+                var menuItem = new MenuItem() 
+                {
+                    Header = header,
+                    Tag = fname,
+                    Command = Model.Commands.SetDictionaryCommand,
+                    CommandParameter = lang.Code
+                };
+                if (lang.Code.Equals(Model.Configuration.Editor.Dictionary, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    menuItem.IsCheckable = true;
+                    menuItem.IsChecked = true;
+                }
+                              
+                ctx.Items.Add(menuItem);
+            }
+
+            ctx.MaxHeight = 800;
+            ctx.IsOpen = true;
+            WindowUtilities.DoEvents();
+        }
+    }
 
     public class RecentDocumentListItem
     {

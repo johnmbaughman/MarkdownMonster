@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -18,13 +19,14 @@ using MahApps.Metro.Controls;
 using MahApps.Metro.Controls.Dialogs;
 using MarkdownMonster.Annotations;
 using Microsoft.Win32;
+using Westwind.Utilities;
 
 namespace MarkdownMonster.Windows
 {
 	/// <summary>
 	/// Interaction logic for GeneratePdfWindow.xaml
 	/// </summary>
-	public partial class GeneratePdfWindow : INotifyPropertyChanged 
+	public partial class GeneratePdfWindow : INotifyPropertyChanged
 	{
 		public string OutputFile { get; set; }
 
@@ -32,7 +34,7 @@ namespace MarkdownMonster.Windows
         public AppModel Model {  get;  }
 
 	    private double initialHeight = 0;
-	  
+
 
 
         public HtmlToPdfGeneration PdfGenerator
@@ -70,7 +72,7 @@ namespace MarkdownMonster.Windows
 		private async void ButtonGeneratePdf_Click(object sender, RoutedEventArgs e)
 		{
 		    WindowUtilities.FixFocus(this,TextMessage);
-            
+
             PdfGenerator.ExecutionOutputText = string.Empty;
 		    TextMessage.Background = Brushes.Transparent;
             TextMessage.Text = string.Empty;
@@ -78,7 +80,7 @@ namespace MarkdownMonster.Windows
 
 		    WindowUtilities.DoEvents();
 
-			var document = mmApp.Model.ActiveDocument; 
+			var document = mmApp.Model.ActiveDocument;
 
 			if (!SaveFile())
 				return;
@@ -89,20 +91,29 @@ namespace MarkdownMonster.Windows
 
 			WindowUtilities.DoEvents();
 
-			// render the document to the normal output location
-			document.RenderHtmlToFile();
+		    string htmlFilename = System.IO.Path.ChangeExtension(document.Filename, "html");
 
-            
-		    bool result = await Task.Run(() =>
+			// render the document with template and return only as string (no output yet)
+		    document.RenderHtmlToFile(filename: htmlFilename, removeBaseTag: true); //, noFileWrite: true);
+
+            //// strip <base> tag
+            //var extracted = StringUtils.ExtractString(html, "<base href=\"", "/>", false, false, true);
+            //if (!string.IsNullOrEmpty(extracted))
+            //    html = html.Replace(extracted, "");
+
+            //// now write out the file
+            //File.WriteAllText(htmlFilename, html);
+
+            bool result = await Task.Run(() =>
 		    {
-		        PdfGenerator.DisplayPdfAfterGeneration = true;
-		        bool res = PdfGenerator.GeneratePdfFromHtml(document.HtmlRenderFilename, OutputFile);
+		        bool res = PdfGenerator.GeneratePdfFromHtml(htmlFilename, OutputFile);
+		        File.Delete(htmlFilename);
 		        return res;
 		    });
 
 			ButtonGeneratePdf.IsEnabled = true;
 
-		    
+
             if (!result)
             {
 
@@ -114,34 +125,40 @@ namespace MarkdownMonster.Windows
 
 			        TextMessage.Text = "Failed to create PDF document.\r\n\r\n" + PdfGenerator.ErrorMessage;
 			    }
-			    
+
 
                 //MessageBox.Show("Failed to create PDF document.\r\n\r\n" + PdfGenerator.ErrorMessage,
                 //	"PDF Generator Error", MessageBoxButton.OK, MessageBoxImage.Warning);
 
-                ShowStatus("PDF document was not created.", 6000);
-				SetStatusIcon(FontAwesomeIcon.Warning,Colors.Firebrick);
+                ShowStatusError("PDF document was not created.");
+
 				return;
 			}
 
-			ShowStatus("PDF document created.",6000);
+			ShowStatus("PDF document created.",mmApp.Configuration.StatusMessageTimeout);
 			SetStatusIcon();
 		}
 
 	    private void ButtonCopyLastCommandToClipboard_Click(object sender, RoutedEventArgs e)
 	    {
-	        Clipboard.SetText(PdfGenerator.FullExecutionCommand);
-	        ShowStatus("Command line has been copied to the clipboard", 6000);
+	        if(ClipboardHelper.SetText(PdfGenerator.FullExecutionCommand))
+	            ShowStatus("Command line has been copied to the clipboard", mmApp.Configuration.StatusMessageTimeout);
 	    }
 
 	    private bool SaveFile()
 		{
 			var document = mmApp.Model.ActiveDocument;
+		    if (document == null)
+		    {
+		        ShowStatus("No document open. Please open a Markdown Document first to generate a PDF.");
+                return false;
+		    }
 
 			string initialFolder = null;
 			if (!string.IsNullOrEmpty(document.Filename) && document.Filename != "untitled")
 				initialFolder = System.IO.Path.GetDirectoryName(document.Filename);
 
+		    string filename = System.IO.Path.ChangeExtension(System.IO.Path.GetFileName(mmApp.Model.ActiveDocument.Filename), "pdf");
 
 			var sd = new SaveFileDialog
 			{
@@ -149,6 +166,7 @@ namespace MarkdownMonster.Windows
 				FilterIndex = 1,
 				Title = "Save output to PDF file",
 				InitialDirectory = initialFolder,
+                FileName = filename,
 				CheckFileExists = false,
 				OverwritePrompt = true,
 				CheckPathExists = true,
@@ -172,36 +190,65 @@ namespace MarkdownMonster.Windows
 		}
 
 
-		#region StatusBar Display
+        #region StatusBar Display
+	    DebounceDispatcher debounce = new DebounceDispatcher();
 
-		public void ShowStatus(string message = null, int milliSeconds = 0)
-		{
-			if (message == null)
-			{
-				message = "Ready";
-				SetStatusIcon();
-			}
+        public void ShowStatus(string message = null, int milliSeconds = 0,
+	        FontAwesomeIcon icon = FontAwesomeIcon.None,
+	        Color color = default(Color),
+	        bool spin = false)
+	    {
+	        if (icon != FontAwesomeIcon.None)
+	            SetStatusIcon(icon, color, spin);
 
-			StatusText.Text = message;
+	        if (message == null)
+	        {
+	            message = "Ready";
+	            SetStatusIcon();
+	        }
 
-			if (milliSeconds > 0)
-			{
-				Dispatcher.DelayWithPriority(milliSeconds, (win) =>
-				{
-					ShowStatus(null, 0);
-					SetStatusIcon();
-				}, this);
-			}
-			WindowUtilities.DoEvents();
-		}
+	        StatusText.Text = message;
 
-		/// <summary>
-		/// Status the statusbar icon on the left bottom to some indicator
-		/// </summary>
-		/// <param name="icon"></param>
-		/// <param name="color"></param>
-		/// <param name="spin"></param>
-		public void SetStatusIcon(FontAwesomeIcon icon, Color color, bool spin = false)
+	        if (milliSeconds > 0)
+	        {
+	            // debounce rather than delay so if something else displays
+	            // a message the delay timer is 'reset'
+	            debounce.Debounce(milliSeconds, (win) =>
+	            {
+	                var window = win as GeneratePdfWindow;
+	                window.ShowStatus(null, 0);
+	            }, this);
+	        }
+
+	        WindowUtilities.DoEvents();
+	    }
+
+
+        /// <summary>
+        /// Displays an error message using common defaults
+        /// </summary>
+        /// <param name="message">Message to display</param>
+        /// <param name="timeout">optional timeout</param>
+        /// <param name="icon">optional icon (warning)</param>
+        /// <param name="color">optional color (firebrick)</param>
+        public void ShowStatusError(string message, int timeout = -1, FontAwesomeIcon icon = FontAwesomeIcon.Warning, Color color = default(Color))
+	    {
+	        if (timeout == -1)
+	            timeout = mmApp.Configuration.StatusMessageTimeout;
+
+	        if (color == default(Color))
+	            color = Colors.Firebrick;
+
+	        ShowStatus(message, timeout, icon, color);
+	    }
+
+        /// <summary>
+        /// Status the statusbar icon on the left bottom to some indicator
+        /// </summary>
+        /// <param name="icon"></param>
+        /// <param name="color"></param>
+        /// <param name="spin"></param>
+        public void SetStatusIcon(FontAwesomeIcon icon, Color color, bool spin = false)
 		{
 			StatusIcon.Icon = icon;
 			StatusIcon.Foreground = new SolidColorBrush(color);

@@ -5,6 +5,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Windows.Media;
+using FontAwesome.WPF;
 using Westwind.Utilities;
 
 namespace MarkdownMonster 
@@ -60,7 +62,7 @@ namespace MarkdownMonster
         
 
         /// <summary>
-        /// Creates an SHA256 checksum of a file
+        /// Creates an MD5 checksum of a file
         /// </summary>
         /// <param name="file"></param>        
         /// <returns></returns>
@@ -104,13 +106,6 @@ namespace MarkdownMonster
             // Use Default of Encoding.Default (Ansi CodePage)
             Encoding enc;
 
-            //using (var reader = new StreamReader(srcFile, true))
-            //{
-            //    enc = reader.CurrentEncoding;
-            //}
-
-            //return enc;
-
             // Detect byte order mark if any - otherwise assume default
             byte[] buffer = new byte[5];
             using (FileStream file = new FileStream(srcFile, FileMode.Open,FileAccess.Read,FileShare.ReadWrite))
@@ -135,64 +130,7 @@ namespace MarkdownMonster
 
             return enc;
         }
-
-        /// <summary>
-        /// This function returns the actual filename of a file
-        /// that exists on disk. If you provide a path/file name
-        /// that is not proper cased as input, this function fixes
-        /// it up and returns the file using the path and file names
-        /// as they exist on disk.
-        /// </summary>
-        /// <param name="filename">A filename to check</param>
-        /// <returns></returns>
-	    public static string GetPhysicalPath(string filename)
-        {
-            try
-            {
-                StringBuilder sb = new StringBuilder(1500);
-                uint result = GetLongPathName(filename, sb, sb.Capacity);
-                if (result > 0)
-                    filename = sb.ToString();
-            }
-            catch { }
-
-            return filename;
-        }
-
-       
-
-        /// <summary>
-        /// API call that takes an input path and turns it into a long path
-        /// that matches the actual signature on disk
-        /// </summary>
-        /// <param name="ShortPath"></param>
-        /// <param name="sb"></param>
-        /// <param name="buffer"></param>
-        /// <returns></returns>
-        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        static extern uint GetLongPathName(string ShortPath, StringBuilder sb, int buffer);
-
-
-        /// <summary>
-        /// Returns a compact path with elipsis from a long path
-        /// </summary>
-        /// <param name="path"></param>
-        /// <param name="length"></param>
-        /// <returns></returns>
-        public static string GetCompactPath(string path, int length = 70)
-        {
-
-            if (string.IsNullOrEmpty(path))
-                return path;
-
-            StringBuilder sb = new StringBuilder(length + 1);
-            PathCompactPathEx(sb, path, 70, 0);
-            return sb.ToString();
-        }
-
-        [DllImport("shlwapi.dll", CharSet = CharSet.Auto)]
-        static extern bool PathCompactPathEx([Out] StringBuilder pszOut, string szPath, int cchMax, int dwFlags);
-
+        
 
         /// <summary>
         /// Retrieves the editor syntax for a file based on extension for use in the editor
@@ -284,7 +222,9 @@ namespace MarkdownMonster
 		/// </summary>
 		/// <param name="imageFile"></param>
 	    public static bool OpenImageInImageEditor(string imageFile)
-	    {
+		{
+		    imageFile = System.Net.WebUtility.UrlDecode(imageFile);
+
 		    try
 		    {
 			    string exe = mmApp.Configuration.ImageEditor;
@@ -315,7 +255,9 @@ namespace MarkdownMonster
 	    /// <param name="imageFile"></param>
 	    public static bool OpenImageInImageViewer(string imageFile)
 	    {
-		    try
+	        imageFile = System.Net.WebUtility.UrlDecode(imageFile);
+
+            try
 		    {
 			    string exe = mmApp.Configuration.ImageViewer;
 			    if (!string.IsNullOrEmpty(exe))
@@ -337,6 +279,50 @@ namespace MarkdownMonster
 		    return true;
 	    }
 
+
+
+        /// <summary>
+        /// Tries to find an installed image editor on
+        /// the system as a default.
+        /// </summary>
+        /// <returns></returns>
+        public static string FindImageEditor()
+        {
+            string file = null;
+            var programFiles64 = Environment.GetEnvironmentVariable("ProgramW6432");
+
+            file = Path.Combine(programFiles64,"Techsmith","Snagit 2018","SnagItEditor.exe");
+            if (File.Exists(file))
+                return file;
+
+            file = Path.Combine(programFiles64,
+                "paint.net", "PaintDotnet.exe");
+            if (File.Exists(file))
+                return file;
+
+            file = Path.Combine(programFiles64,
+                "irfanview", "i_view64.exe");
+            if (File.Exists(file))
+                return file;
+
+            file = Path.Combine(programFiles64, "GIMP 2","bin");
+            if (Directory.Exists(file))
+            {
+                var di = new DirectoryInfo(file);
+
+                var fi = di.GetFiles("gimp-*.*.*")
+                    .OrderByDescending(d => d.LastWriteTime)
+                    .FirstOrDefault();
+
+                if (fi != null)
+                    return Path.Combine(fi.FullName);
+            }
+
+            file =  @"mspaint.exe";
+
+            return file;
+        }
+
         /// <summary>
         /// Returns the image media type for a give file extension based
         /// on a filename or url passed in.
@@ -347,6 +333,8 @@ namespace MarkdownMonster
         {
             if (string.IsNullOrEmpty(file))
                 return file;
+
+            
 
             string ext = Path.GetExtension(file).ToLower();
             if (ext == ".jpg" || ext == ".jpeg")
@@ -360,8 +348,26 @@ namespace MarkdownMonster
             if (ext == ".tif" || ext == ".tiff")
                 return "image/tiff";
 
+            // fonts
+            if (ext == ".woff")
+                return "application/font-woff";            
+            if (ext == ".svg")
+                return "image/svg+xml";
+
+            // ignored fonts
+            if (ext == ".woff2")
+                return "font/woff2";
+            //if (ext == ".otf")
+            //    return "application/x-font-opentype";
+            //if (ext == ".ttf")
+            //    return "application/x-font-ttf";
+            //if (ext == ".eot")
+            //    return "application/vnd.ms-fontobject";
+
             return "application/image";
         }
+
+        
         #endregion
 
         #region Shell Operations
@@ -393,14 +399,15 @@ namespace MarkdownMonster
                 Process.Start("explorer.exe", $"/select,\"{filename}\"");
         }
 
-	    /// <summary>
-	    /// Executes a process with given command line parameters
-	    /// </summary>
-	    /// <param name="executable">Executable to run</param>
-	    /// <param name="arguments"></param>
-	    /// <param name="timeoutMs">Timeout of the process in milliseconds. Pass -1 to wait forever. Pass 0 to not wait.</param>
-	    /// <returns></returns>
-	    public static int ExecuteProcess(string executable, string arguments =  null, int timeoutMs = 0, ProcessWindowStyle windowStyle= ProcessWindowStyle.Hidden)
+        /// <summary>
+        /// Executes a process with given command line parameters
+        /// </summary>
+        /// <param name="executable">Executable to run</param>
+        /// <param name="arguments"></param>
+        /// <param name="timeoutMs">Timeout of the process in milliseconds. Pass -1 to wait forever. Pass 0 to not wait.</param>
+        /// <param name="windowStyle"></param>
+        /// <returns></returns>
+        public static int ExecuteProcess(string executable, string arguments =  null, int timeoutMs = 0, ProcessWindowStyle windowStyle= ProcessWindowStyle.Hidden)
 	    {
 		    Process process;
 
@@ -416,7 +423,8 @@ namespace MarkdownMonster
 
                     process.StartInfo.UseShellExecute = false;
 
-				    process.StartInfo.RedirectStandardOutput = true;
+			        
+                    process.StartInfo.RedirectStandardOutput = true;
 				    process.StartInfo.RedirectStandardError = true;
 
 				    process.OutputDataReceived += (sender, args) =>
@@ -429,7 +437,7 @@ namespace MarkdownMonster
 				    };
 
 				    process.Start();
-					
+                    
 				    if (timeoutMs < 0)
 					    timeoutMs = 99999999; // indefinitely
 
@@ -457,6 +465,113 @@ namespace MarkdownMonster
 	    }
 
 
+        public static void ShowExternalBrowser(string url)
+        {
+            if (string.IsNullOrEmpty(mmApp.Configuration.WebBrowserPreviewExecutable) ||
+                !File.Exists(mmApp.Configuration.WebBrowserPreviewExecutable))
+            {
+                mmApp.Configuration.WebBrowserPreviewExecutable = null;
+                ShellUtils.GoUrl(url);
+            }
+            else
+            {
+                ExecuteProcess(mmApp.Configuration.WebBrowserPreviewExecutable, $"\"{url}\"");
+            }
+        }
+        #endregion
+
+        #region Git Operations
+        /// <summary>
+        /// Opens the configured Git Client in the specified folder
+        /// </summary>
+        /// <param name="folder"></param>
+        public static bool OpenGitClient(string folder)
+        {            
+            
+            var exe = mmApp.Configuration.Git.GitClientExecutable;
+            if (string.IsNullOrEmpty(exe) || !File.Exists(exe))
+                return false;
+
+            try
+            {
+                var pi = Process.Start(exe, folder);
+                if (pi == null)
+                    return false;
+            }
+            catch
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Checks to see if 
+        /// </summary>
+        /// <returns></returns>
+        public static string FindGitClient()
+        {
+            string git = null;
+
+            git = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                "SmartGit\\bin\\SmartGit.exe");
+            if (File.Exists(git))
+                return git;
+
+            git = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "GitHubDesktop\\GitHubDesktop.exe");
+            if (File.Exists(git))
+                return git;
+            
+            git = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "SourceTree\\sourcetree.exe");
+            if (File.Exists(git))
+                return git;
+
+
+            git = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "gitkraken");
+            if (Directory.Exists(git))
+            {
+                var di = new DirectoryInfo(git);
+
+                di = di.GetDirectories("app-*", SearchOption.TopDirectoryOnly)
+                    .OrderByDescending(d => d.LastWriteTime)
+                    .FirstOrDefault(d => d.Name.StartsWith("app-"));
+
+                if (di != null)
+                {
+                    return Path.Combine(di.FullName, "gitkraken.exe");
+                }
+
+            }
+
+            return git;
+        }
+
+
+        public static string FindGitDiffTool()
+        {
+            string diff = null;
+            
+            diff = Path.Combine(Environment.GetEnvironmentVariable("ProgramW6432"),
+                "Beyond Compare 4\\BCompare.exe");
+            if (File.Exists(diff))
+                return diff;
+
+            diff = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                "Meld\\Meld.exe");
+            if (File.Exists(diff))
+                return diff;
+
+            diff = Path.Combine(Environment.GetEnvironmentVariable("ProgramW6432"),
+                "KDiff\\KDiff.exe");
+            if (File.Exists(diff))
+                return diff;
+
+            return diff;
+        }
+
         /// <summary>
         /// Commits a specific, individual file to Git and optionally pushes
         /// to the Git origin.
@@ -470,6 +585,72 @@ namespace MarkdownMonster
         /// <returns>true or false. If false message parameter is set.</returns>
         public static bool CommitFileToGit(string filename, bool push, out string message)
         {
+            if (!mmApp.Model.ActiveDocument.Save())
+            {
+                message = "Couldn't save file.";
+                return false;
+            }
+
+            //  git commit --only Build.ps1 -m "Updating documentation for readme.md."
+            //  git push origin
+
+            string file = Path.GetFullPath(filename);
+            string justFile = System.IO.Path.GetFileName(file);
+
+            if (!File.Exists(file))
+            {
+                message = $"File {justFile} doesn't exist.";
+                return false;
+            }
+
+            string path = Path.GetDirectoryName(filename);
+            if (!Directory.Exists(path))
+            {
+                message = $"File {file} doesn't exist.";
+                return false;
+            }
+
+
+            string origPath = Environment.CurrentDirectory;
+            try
+            {
+                Directory.SetCurrentDirectory(path);
+
+                int result = ExecuteProcess("git.exe",
+                    $"commit --only \"{file}\" -m \"Updating {justFile}\".", timeoutMs: 10000);
+                if (result != 0)
+                {
+                    message = $"There are no changes to commit for {justFile}.";
+                    return false;
+                }
+
+                if (push)
+                    ExecuteProcess("git.exe", "push origin",timeoutMs: 10000);
+            }
+            catch(Exception ex)
+            {
+                message = "An error occurred committing to Git: " + ex.Message;
+                return false;
+            }
+            finally
+            {
+                Directory.SetCurrentDirectory(origPath);
+            }
+
+            message = string.Empty;
+            return true;            
+        }
+
+
+
+        public static bool CloneRepository(string filename, bool push, out string message)
+        {
+            if (!mmApp.Model.ActiveDocument.Save())
+            {
+                message = "Couldn't save file.";
+                return false;
+            }
+
             //  git commit --only Build.ps1 -m "Updating documentation for readme.md."
             //  git push origin
 
@@ -504,9 +685,9 @@ namespace MarkdownMonster
                 }
 
                 if (push)
-                    ExecuteProcess("git.exe", "push origin",timeoutMs: 10000);
+                    ExecuteProcess("git.exe", "push origin", timeoutMs: 10000);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 message = "An error occurred committing to Git: " + ex.Message;
                 return false;
@@ -517,21 +698,7 @@ namespace MarkdownMonster
             }
 
             message = string.Empty;
-            return true;            
-        }
-
-        public static void ShowExternalBrowser(string url)
-        {
-            if (string.IsNullOrEmpty(mmApp.Configuration.WebBrowserPreviewExecutable) ||
-                !File.Exists(mmApp.Configuration.WebBrowserPreviewExecutable))
-            {
-                mmApp.Configuration.WebBrowserPreviewExecutable = null;
-                ShellUtils.GoUrl(url);
-            }
-            else
-            {
-                ExecuteProcess(mmApp.Configuration.WebBrowserPreviewExecutable, $"\"{url}\"");
-            }
+            return true;
         }
 
         #endregion

@@ -22,8 +22,17 @@
 
     <SolidColorBrush x:Key="BlueItem" Color="#0173C6" />
     <SolidColorBrush x:Key="LightThemeTitleBackground" Color="#D5DAE8" />
+    <SolidColorBrush x:Key="LightThemeContentBackground" Color="#555" />
     <SolidColorBrush x:Key="HeadlineColor" Color="#4D6081" />
-    <SolidColorBrush x:Key="FolderBrowserHeaderBackground" Color="#bbb"/>
+    <SolidColorBrush x:Key="SidebarHeaderBackground" Color="#bbb"/>
+
+    <Style  x:Key="HeaderTextBoxStyle" TargetType="{x:Type TextBox}"
+            BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="FontSize" Value="19" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="#48A4FF" />
+        <Setter Property="Padding" Value="5,2,5,3" />
+    </Style>
 
     <!-- this doesn't work-->
     <Style TargetType="{x:Type controls:MetroWindow}" BasedOn="{x:Null}">

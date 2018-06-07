@@ -24,6 +24,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 using MarkdownMonster.Annotations;
@@ -35,6 +36,7 @@ namespace MarkdownMonster.AddIns
     /// Detail about an individual external add in 
     /// that is listed in the Addin Manager
     /// </summary>
+    [DebuggerDisplay("{id} {name}")]
     public class AddinItem : INotifyPropertyChanged
     {        
         /// <summary>
@@ -250,10 +252,10 @@ namespace MarkdownMonster.AddIns
             {
                 if (value == _installedVersion) return;
                 _installedVersion = value;
-                OnPropertyChanged();
+                OnPropertyChanged(nameof(installedVersion));
             }
         }
-
+        private string _installedVersion;
 
         /// <summary>
         /// Determines whether the addin is enabled.
@@ -270,7 +272,7 @@ namespace MarkdownMonster.AddIns
         }
         private bool _isEnabled;
 
-        private string _installedVersion;
+        
 
         private bool _updateAvailable;
 

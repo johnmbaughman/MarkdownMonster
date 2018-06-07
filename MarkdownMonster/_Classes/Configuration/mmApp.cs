@@ -191,6 +191,12 @@ namespace MarkdownMonster
             {
                 SendTelemetry("shutdown");
             }
+
+            var tempPath = Path.GetTempPath();
+
+            // Cleanup temp files
+            File.Delete(Path.Combine(tempPath, "_MarkdownMonster_Preview.html"));
+            FileUtils.DeleteTimedoutFiles(Path.Combine(tempPath, "mm_diff_*.*"), 1);
         }
         #endregion
 
@@ -240,21 +246,6 @@ namespace MarkdownMonster
         public static void Log(Exception ex)
         {
             Log(ex.GetBaseException().Message, ex);
-            //if (Telemetry.UseApplicationInsights)
-            //{
-            //    var props = new Dictionary<string, string>()
-            //    {
-            //        {"version", GetVersion()},
-            //        {"usage", Configuration.ApplicationUpdates.AccessCount.ToString()},
-            //        {"registered", UnlockKey.IsRegistered().ToString()}
-            //    };
-            //    AppInsights.TrackException(ex.GetBaseException(), props);
-            //}
-            //else
-            //{
-            //    ex = ex.GetBaseException();
-            //    Log(ex.Message, ex);
-            //}
         }
 
         /// <summary>
@@ -279,9 +270,10 @@ namespace MarkdownMonster
                 exMsg = $@"
 Markdown Monster v{version}
 {winVersion}
+{CultureInfo.CurrentCulture.IetfLanguageTag} - {CultureInfo.CurrentUICulture.IetfLanguageTag}    
 ---
 {ex.Source}
-{ex.StackTrace}
+{ex.StackTrace}          
 ---------------------------
 
 
@@ -304,8 +296,11 @@ Markdown Monster v{version}
                             {"severity", unhandledException ? "unhandled" : ""},
                             {"version", version},
                             {"winversion", winVersion },
+                            {"dotnetversion", ComputerInfo.GetDotnetVersion() },
                             {"usage", Configuration.ApplicationUpdates.AccessCount.ToString()},
-                            {"registered", UnlockKey.IsRegistered().ToString()}
+                            {"registered", UnlockKey.IsRegistered().ToString()},
+                            {"culture",  CultureInfo.CurrentCulture.IetfLanguageTag },
+                            {"uiculture",  CultureInfo.CurrentUICulture.IetfLanguageTag}
                         });
                 }
                 else
@@ -313,10 +308,12 @@ Markdown Monster v{version}
                     var props = new Dictionary<string, string>()
                     {
                         {"msg",msg },
-                        {"version", GetVersion()},
                         {"usage", Configuration.ApplicationUpdates.AccessCount.ToString()},
-                        {"registered", UnlockKey.IsRegistered().ToString()}
-                    };
+                        {"registered", UnlockKey.IsRegistered().ToString()},
+                        {"version", GetVersion()},
+                        {"culture",  CultureInfo.CurrentCulture.IetfLanguageTag },
+                        {"uiculture",  CultureInfo.CurrentUICulture.IetfLanguageTag}
+                };
                     AppInsights.TrackTrace(msg,props);
                 }
             }
@@ -468,9 +465,21 @@ Markdown Monster v{version}
             return v.ToString();
         }
 
-        public static string GetVersionForDisplay()
+        /// <summary>
+        /// Returns a formatted string value for the version.
+        /// </summary>
+        /// <returns></returns>
+        public static string GetVersionForDisplay(string version = null)
         {
-            return GetVersion().Replace(".0", "");
+            if (version == null)
+                version = GetVersion();
+
+            if (version.EndsWith(".0.0"))
+                version = version.Substring(0, version.Length - 4);
+            else if (version.EndsWith(".0"))
+                version = version.Substring(0, version.Length - 2);
+            
+            return version;
         }
 
         public static string GetVersionDate()

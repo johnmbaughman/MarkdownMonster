@@ -16,9 +16,9 @@
     <meta name="author" content="Rick Strahl, West Wind Technologies  - https://weblog.west-wind.com"/>
 
 
-    <link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet" />
     <link href="Css/application.css" rel="stylesheet" />
-    <link href="//netdna.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet" />
+    <link href="https://netdna.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet" />
 
     <link rel="shortcut icon" href="favicon.ico" />
     <link rel="icon" type="image/png" href="favicon.png" />
@@ -27,7 +27,7 @@
     <style>       
         #ActionButtons {
             width: 100%;
-            margin: 20px auto 40px;
+            margin: 20px auto 10px;
             text-align: center;
         }
         #ActionButtons a {
@@ -70,17 +70,17 @@
     <meta property="og:description" content="Markdown Monster is an easy to use Markdown Editor and Weblog Publisher for Windows.">
     <meta property="og:url" content="https://markdownmonster.west-wind.com">
     
-    <meta property="og:image" content="https://markdownmonster.west-wind.com/Images/MarkdownMonsterMonsterBigger.png">
+    <meta property="og:image" content="https://markdownmonster.west-wind.com/Images/MarkdownMonsterLogo.jpg">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1024">
     <meta property="og:image:height" content="639">
 
-    <meta name="twitter:card" content="https://markdownmonster.west-wind.com/Images/MarkdownMonsterMonsterBigger.png">
+    <meta name="twitter:card" content="https://markdownmonster.west-wind.com/Images/MarkdownMonsterLogo.jpg">
     <meta name="twitter:site" content="@markdownmonstr">
     <meta name="twitter:title" content="Markdown Monster - a better Markdown Editor and Weblog Publisher for Windows">
     <meta name="twitter:description" content="Markdown Monster is an interactive Markdown Editor dedicated to optimizing Markdown content creation with a capable sytnax highlighted editor, live preview, inline spell-checking and many out of your way helpers that facilitate embedding images, links, code, tables, emojiis and more.">
     <meta name="twitter:creator" content="@markdownmonstr">
-    <meta name="twitter:image" content="https://markdownmonster.west-wind.com/Images/MarkdownMonsterMonsterBigger.png">
+    <meta name="twitter:image" content="https://markdownmonster.west-wind.com/Images/MarkdownMonsterLogo.jpg">
     <meta name="twitter:domain" content="markdownmonster.west-wind.com">
 </head>
 <body>
@@ -95,23 +95,27 @@
             <a href="./" class="active">
                 Home
             </a>
-            <a href="https://www.youtube.com/watch?v=XjFf57Ap9VE">                
-                Video
-            </a>
-            <%--<a href="features.aspx">Features</a>--%>
             <a href="download.aspx" class="hidable" title="Download Markdown Monster">                
                 Download
             </a>
+            <a href="https://www.youtube.com/watch?v=XjFf57Ap9VE">                
+                Video
+            </a>
+            <a href="docs/_4rd0xigys.htm" title="Markdown Monster Features">                
+                Features
+            </a>
+            <%--<a href="features.aspx">Features</a>--%>           
             <a href="purchase.aspx" title="Purchase Markdown Monster">                
                 Buy
             </a>                 
             <a href="https://support.west-wind.com/Thread4NM0M17RC.wwt" class="hidable" title="Support for Markdown Monster">                
                 Support
             </a>
+        
             <a href="docs/" title="Markdown Monster Documentation">                
                 Docs
             </a>            
-            <a href="https://medium.com/markdown-monster-blog/" title="Markdown Monster Weblog">                
+            <a href="https://medium.com/markdown-monster-blog/" title="Markdown Monster Weblog" class="hidable">                
                 Blog
             </a>
             <%--<a href="pricing.aspx">License</a>--%>
@@ -125,12 +129,13 @@
             <header style="background-color: #535353; color: whitesmoke;">
                                
                 
-                <div style="background: black; padding: 0 0;position: relative">
-                    <div style="width: 100%;margin: 0 4%;">
-                        <img src="Images/MarkdownMonsterMonsterBigger.png" alt="Markdown Monster"  />
+                <div style="background: black; padding: 0 0; position: relative;">
+                    <div >
+                        <img src="Images/MarkdownMonsterLogo.jpg" alt="Markdown Monster"  style="max-width: 75%;margin: 0 15% 0 10%;" />
                           <a href="https://github.com/rickstrahl/MarkdownMonster">
-                     <img style="position: absolute; top:0; right: 0; border: 0;" src="https://camo.githubusercontent.com/652c5b9acfaddf3a9c326fa6bde407b87f7be0f4/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f6f72616e67655f6666373630302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_orange_ff7600.png">
-                 </a>
+                             <img style="position: absolute; top:0; right: 0; border: 0;" 
+                                  src="https://camo.githubusercontent.com/652c5b9acfaddf3a9c326fa6bde407b87f7be0f4/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f6f72616e67655f6666373630302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_orange_ff7600.png">
+                          </a>
                         
                         
                          <nav id="ActionButtons" >                            
@@ -147,21 +152,16 @@
                                >
                                 <i class="fa fa-youtube"></i>
                                 Video
-                            </a>
-                            
-          
+                            </a>                            
                             <br />
                             <small style="font-size: 8pt;"><i>version <%= Version %> - <%= ReleaseDate%></i></small>
                         </nav>
                         
-                        
-
-                        <h1 style="font-weight: bold; display: none">Markdown Monster</h1>
-                        
+                        <h1 style="font-weight: bold; display: none">Markdown Monster</h1>                        
                     </div>
     
-                    <div class="top-bullet-box">
-                        <h4 style="color: #ffd281;">Markdown Editing and Weblog Publishing on Windows</h4>
+                    <div class="top-bullet-box" style="margin: 0;">
+                        <h3 style="color: #ffd281;">Markdown Editing and Weblog Publishing on Windows</h3>
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="bullet-box-items">
@@ -213,11 +213,11 @@
                                                                                                         
                                     <div>
                                         <i class="fa fa-check" style="color: lightgreen"></i>
-                                        Vim and Emacs support
+                                        Git Integration
                                     </div>  
                                     <div>
                                         <i class="fa fa-check" style="color: lightgreen"></i>
-                                        Pandoc rendering &amp; conversion
+                                        Document Outline
                                     </div>
                                     <div>
                                         <i class="fa fa-check" style="color: lightgreen"></i>
@@ -225,7 +225,7 @@
                                     </div>   
                                     <div>
                                         <i class="fa fa-check" style="color: lightgreen"></i>
-                                        .NET based scripting & addins
+                                        .NET scripting & addins
                                     </div>
                                 </div>
                             </div>
@@ -323,6 +323,7 @@
                                 <div class="carousel-caption">
                                 </div>
                             </div>
+                                        
                             
                             <div class="item">
                                 <img src="Images/screenshot_light.png" />
@@ -418,8 +419,21 @@
 
                         <!-- Wrapper for slides -->
                         <div class="carousel-inner" >
-                               
+                              
                             <div class="item active">
+                                <img src="Images/Tweets/JeremyMorgan.png" />
+                                <div class="carousel-caption">
+                                </div>
+                            </div>
+
+                            <div class="item">
+                                <img src="Images/Tweets/James_M_South.png" />
+                                <div class="carousel-caption">
+                                </div>
+                            </div>
+
+
+                            <div class="item">
                                 <img src="Images/Tweets/angrypets.png" />
                                 <div class="carousel-caption">
                                 </div>
@@ -462,30 +476,18 @@
                             </div>
                             
                             <div class="item">
-                                <img src="Images/Tweets/_bron_.png" />
+                                <img src="Images/Tweets/benb.png" />
                                 <div class="carousel-caption">
                                 </div>
                             </div>
-                            
-                            
+
+                    
                             <div class="item">
                                 <img src="Images/Tweets/James_Willock2.png" />
                                 <div class="carousel-caption">
                                 </div>
                             </div>	
-                            
-                            
-                            <div class="item">
-                                <img src="Images/Tweets/dbVaughan.png" />
-                                <div class="carousel-caption">
-                                </div>
-                            </div>
-
-                            <div class="item">
-                                <img src="Images/Tweets/ArthurZ.png" />
-                                <div class="carousel-caption">
-                                </div>
-                            </div>	
+                                                        
                             
                             <div class="item">
                                 <img src="Images/Tweets/vmoench.png" />
@@ -533,15 +535,6 @@
                                         Inline spell checking
                                     </div>
                                     <div>
-                                        <i class="fa fa-check-circle"></i>
-                                        Gentle toolbar support
-                                    </div>
-                                    <div>
-                                        <i class="fa fa-check-circle"></i>
-                                        File and Folder Browser
-                                    </div>
-
-                                    <div>
                                         <i class="fa fa-check-circle"></i> 
                                         Easy image and link embedding
                                     </div>
@@ -549,6 +542,23 @@
                                         <i class="fa fa-check-circle"></i> 
                                         Paste images from Clipboard
                                     </div>
+                                    <div>
+                                        <i class="fa fa-check-circle"></i>
+                                        Gentle toolbar support
+                                    </div>
+                                    <div>
+                                        <i class="fa fa-check-circle"></i>
+                                        File and Folder Browser
+                                    </div>
+                                    <div>
+                                        <i class="fa fa-check-circle"></i>
+                                        Document Outline
+                                    </div>                                                                         
+                                    <div>
+                                        <i class="fa fa-check-circle"></i>
+                                        Git Integration
+                                    </div>
+                                    
                                     <div>
                                         <i class="fa fa-check-circle"></i>
                                         Built in screen capture
@@ -560,7 +570,7 @@
                                     
                                     <div>
                                         <i class="fa fa-check-circle"></i>
-                                        Import Html into Markdown
+                                        Import Html to Markdown
                                     </div>
                                     <div>
                                         <i class="fa fa-check-circle"></i>
@@ -572,8 +582,12 @@
                                     </div>                                    
                                     <div>
                                         <i class="fa fa-check-circle"></i>
-                                        Editor and Preview Theming
-                                    </div>                                    
+                                        Customize Preview Themes
+                                    </div>
+                                    <div>
+                                        <i class="fa fa-check-circle"></i>
+                                        High DPI Support
+                                    </div>
                                     <div>
                                         <i class="fa fa-check-circle"></i>
                                         Weblog publishing and editing
@@ -581,27 +595,19 @@
                                     <div>
                                         <i class="fa fa-check-circle"></i>
                                         Yaml Meta Data Support
-                                    </div>                                                                      
-									<div>
-										<i class="fa fa-check-circle"></i>
-										Integrated Folder Browser
-									</div>
+                                    </div>
                                     <div>
                                         <i class="fa fa-check-circle"></i>
-                                        Expandable text templates
+                                        Snippet Expansion Templates
                                     </div>   
 									<div>
 										<i class="fa fa-check-circle"></i>
-										Swappable Markdown Parsers (Markdig,Pandoc)
+										Swappable Markdown Parsers
 									</div>
                                     <div>
                                         <i class="fa fa-check-circle"></i>
                                         Extensible with .NET Add-ins
-                                    </div>                   
-                                    <div>
-                                        <i class="fa fa-check-circle"></i>
-                                        High DPI Support
-                                    </div>                   
+                                    </div>                                                                         
                                 </div>
                             </div>
                         </div>

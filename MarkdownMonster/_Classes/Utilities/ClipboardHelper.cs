@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Westwind.Utilities;
@@ -91,12 +92,8 @@ EndSelection:<<<<<<<<4";
         /// <param  name="plainText">the plain text</param>      
         public static DataObject CreateDataObject(string html, string plainText)
         {
-            html = html ?? String.Empty;
+            html = html ?? string.Empty;
             var htmlFragment = GetHtmlDataString(html);
-
-            // re-encode the string so it will work  correctly (fixed in CLR 4.0)      
-            if (Environment.Version.Major < 4 && html.Length != Encoding.UTF8.GetByteCount(html))
-                htmlFragment = Encoding.Default.GetString(Encoding.UTF8.GetBytes(htmlFragment));
 
             var dataObject = new DataObject();
             dataObject.SetData(DataFormats.Html, htmlFragment);
@@ -110,14 +107,23 @@ EndSelection:<<<<<<<<4";
         /// See <see  cref="CreateDataObject"/> for HTML fragment details.<br/>      
         /// </summary>      
         /// <example>      
-        ///  ClipboardHelper.CopyToClipboard("Hello <b>World</b>",  "Hello World");      
+        ///  ClipboardHelper.CopyHtmlToClipboard("Hello <b>World</b>",  "Hello World");      
         /// </example>      
-        /// <param name="html">a  html fragment</param>      
+        /// <param name="html">an html fragment</param>      
         /// <param  name="plainText">the plain text</param>      
-        public static void CopyHtmlToClipboard(string html, string plainText)
+        public static bool CopyHtmlToClipboard(string html, string plainText)
         {
-            var dataObject = CreateDataObject(html, plainText);
-            Clipboard.SetDataObject(dataObject, true);
+            try
+            {
+                var dataObject = CreateDataObject(html, plainText);
+                Clipboard.SetDataObject(dataObject, true);
+                return true;
+            }
+            catch (Exception e)
+            {
+                mmApp.Log("Copy HTML to Clipboard failed: ",e);
+                return false;
+            }
         }
 
 
@@ -240,5 +246,77 @@ EndSelection:<<<<<<<<4";
             }
             return count;
         }
+
+
+        #region Safe Clipboard Operations
+
+
+        /// <summary>
+        /// Safely sets the clipboard and optionally displays a status error message
+        /// </summary>
+        /// <param name="text"></param>
+        /// <param name="showStatusError"></param>
+        /// <returns></returns>
+        public static bool SetText(string text, bool showStatusError = true)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (showStatusError)
+                    mmApp.Model.Window.ShowStatusError($"Couldn't set clipboard text: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Safe way to retrieve whether clipboard contains an image
+        /// </summary>
+        /// <returns></returns>
+        public static bool ContainsImage()
+        {
+            int x = 0;
+            while (x++ < 10)
+            {
+                try
+                {
+                    return Clipboard.ContainsImage();
+                }
+                catch
+                {
+                    Thread.Sleep(20);
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Safe way to retrieve whether clipboard contains an image
+        /// </summary>
+        /// <returns></returns>
+        public static bool ContainsText()
+        {
+            int x = 0;
+            while (x++ < 10)
+            {
+                try
+                {
+                    return Clipboard.ContainsText();
+                }
+                catch
+                {
+                    Thread.Sleep(20);
+                }
+            }
+
+            return false;
+        }
+
+        #endregion
+
     }
 }

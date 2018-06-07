@@ -1,12 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using MarkdownMonster.Configuration;
 using Newtonsoft.Json;
 using Westwind.Utilities.Configuration;
+using MarkdownMonster.Annotations;
+using Westwind.Utilities;
 
 
 namespace MarkdownMonster
@@ -15,7 +19,8 @@ namespace MarkdownMonster
     /// <summary>
     /// Application level configuration for Markdown Monster
     /// </summary>
-    public class ApplicationConfiguration : AppConfiguration, 
+    public class
+        ApplicationConfiguration : AppConfiguration, 
                                             INotifyPropertyChanged
     {
         /// <summary>
@@ -32,6 +37,7 @@ namespace MarkdownMonster
             }
         }
         private Themes _applicationTheme;
+
         public bool OpenInPresentationMode { get; set; }
 
         /// <summary>
@@ -41,7 +47,7 @@ namespace MarkdownMonster
         /// </summary>
         public bool UseSingleWindow { get; set; }
 
-        #region Editor Settings
+        
         /// <summary>
         /// The theme used for the editor. Can be any of AceEditor themes
         /// twilight, visualstudio, github, monokai etc.
@@ -60,21 +66,27 @@ namespace MarkdownMonster
         private string _editorTheme;
 
         /// <summary>
+        /// Editor Configuration Sub-Settings
+        /// </summary>
+        public EditorConfiguration Editor { get; set; }
+
+        
+        /// <summary>
         /// Themes used to render the Preview. Preview themes are
         /// located in the .\PreviewThemes folder and you can add
         /// custom themes to this folder.
         /// </summary>
-        public string RenderTheme
+        public string PreviewTheme
         {
-            get { return _RenderTheme; }
+            get { return _previewTheme; }
             set
             {
-                if (value == _RenderTheme) return;
-                _RenderTheme = value;
-                OnPropertyChanged(nameof(RenderTheme));
+                if (value == _previewTheme) return;
+                _previewTheme = value;
+                OnPropertyChanged(nameof(PreviewTheme));
             }
         }
-        private string _RenderTheme;
+        private string _previewTheme;
 
         /// <summary>
         /// Determines whether the preview attempts to sync to 
@@ -126,7 +138,14 @@ namespace MarkdownMonster
         }
         private bool _previewHttpLinksExternal;
 
-        
+
+        /// <summary>
+        /// Determines whether the full path for the open
+        /// document is displayed in the Main Window's
+        /// title bar.
+        /// </summary>
+        public bool ShowFullDocPathInTitlebar { get; set; }
+
         /// <summary>
         /// String that holds any of the following as a comma delimited string
         /// in all lower case:
@@ -195,164 +214,7 @@ namespace MarkdownMonster
         }
         private bool _alwaysUsePreviewRefresh;
 
-
-        
-
-        /// <summary>
-        /// The font used in the editor. Must be a proportional font
-        /// </summary>
-        public string EditorFont
-        {
-            get { return _editorFont; }
-            set
-            {
-                if (_editorFont == value) return;
-                _editorFont = value;
-                OnPropertyChanged(nameof(EditorFont));
-            }
-        }
-
-        private string _editorFont;
-
-        /// <summary>
-        /// Font size for the editor.
-        /// </summary>
-        public int EditorFontSize
-        {
-            get { return _EditorFontSize; }
-            set
-            {
-                if (value == _EditorFontSize) return;
-                _EditorFontSize = value;
-                OnPropertyChanged(nameof(EditorFontSize));
-            }
-        }
-        private int _EditorFontSize;
-
-
-        /// <summary>
-        /// Zoom level percentage on top of the EditorFontSize
-        /// </summary>
-        public int EditorZoomLevel
-        {
-            get { return _editorZoomLevel; }
-            set
-            {
-                if (value == _editorZoomLevel) return;
-                _editorZoomLevel = value;
-                OnPropertyChanged(nameof(EditorZoomLevel));                
-                _editorZoomLevel = value;
-            }
-        }
-        private int _editorZoomLevel = 100;
-        
-
-        /// <summary>
-        /// Determines whether the active line is highlighted in the editor
-        /// </summary>
-        public bool EditorHighlightActiveLine
-        {
-            get { return _editorHighlightActiveLine; }
-            set
-            {
-                if (_editorHighlightActiveLine == value) return;
-                _editorHighlightActiveLine = value;
-                OnPropertyChanged(nameof(EditorHighlightActiveLine));
-            }
-        }
-        private bool _editorHighlightActiveLine;
-
-
-
-        /// <summary>
-        /// 
-        /// </summary>
-        public bool EditorShowLineNumbers
-        {
-            get { return _EditorShowLineNumbers; }
-            set
-            {
-                if (_EditorShowLineNumbers == value) return;
-                _EditorShowLineNumbers = value;
-                OnPropertyChanged(nameof(EditorShowLineNumbers));
-            }
-        }
-        private bool _EditorShowLineNumbers = false;
-
-        /// <summary>
-        /// Determines whether the editor should show invisible characters.
-        /// Default is <see langword="false" />.
-        /// </summary>
-        public bool EditorShowInvisibles
-        {
-            get { return _EditorShowInvisibles; }
-            set
-            {
-                if (_EditorShowInvisibles == value) return;
-                _EditorShowInvisibles = value;
-                OnPropertyChanged(nameof(EditorShowInvisibles));
-            }
-        }
-        private bool _EditorShowInvisibles = false;
-
-        /// <summary>
-        /// Determines whether the editor wraps text or extends lines
-        /// out. Default is false.
-        /// </summary>
-        public bool EditorWrapText
-        {
-            get { return _EditorWrapText; }
-            set
-            {
-                if (value == _EditorWrapText) return;
-                _EditorWrapText = value;
-                OnPropertyChanged(nameof(EditorWrapText));
-            }
-        }
-        private bool _EditorWrapText;
-
-        /// <summary>
-        /// Determines if spell checking is used. This value maps to the
-        /// spell check button in the window header.
-        /// </summary>
-        public bool EditorEnableSpellcheck
-        {
-            get { return _editorEnableSpellcheck; }
-            set
-            {
-                if (value == _editorEnableSpellcheck) return;
-                _editorEnableSpellcheck = value;
-                OnPropertyChanged(nameof(EditorEnableSpellcheck));
-            }
-        }
-        private bool _editorEnableSpellcheck;
-
-
-        /// <summary>
-        /// Dictionary used by the editor. Defaults to 'en_US'.
-        /// Others shipped: de_DE, es_ES, fr_FR
-        /// Any OpenOffice style dictionary can be used by copying into
-        /// the .\Editor folder providing .dic and .aff files.
-        /// </summary>
-        public string EditorDictionary
-        {
-            get { return _editorDictionary; }
-            set
-            {
-                if (value == _editorDictionary) return;
-                _editorDictionary = value;
-                OnPropertyChanged(nameof(EditorDictionary));
-            }
-        }
-        private string _editorDictionary;
-
-
-        /// <summary>
-        /// Keyboard input hanlder type:
-        /// default (ace/vs), vim, emacs
-        /// </summary>
-        public object EditorKeyboardHandler { get; set; }
-
+     
         /// <summary>
         /// Default code syntax displayed in the Paste Code dialog
         /// </summary>
@@ -385,8 +247,6 @@ namespace MarkdownMonster
         /// </summary>
         public string WebBrowserPreviewExecutable { get; set; }
 
-        #endregion
-
 
 
         #region Document Operations
@@ -410,12 +270,6 @@ namespace MarkdownMonster
 		/// </summary>
 	    public string TerminalCommandArgs { get; set; }
 
-        /// <summary>
-        /// Determines how Git Commits are handled - either just commit
-        /// or Commit and Push
-        /// </summary>
-        public GitCommitBehaviors GitCommitBehavior { get; set; } = GitCommitBehaviors.CommitAndPush;
-
 
         /// <summary>
         /// A collection of the open Markdown documents.
@@ -427,7 +281,7 @@ namespace MarkdownMonster
         /// List of recently opened files. Files opened and selected are
         /// added to the beginning of the list.
         /// </summary>
-        public List<string> RecentDocuments
+        public ObservableCollection<string> RecentDocuments
         {
             get { return _recentDocuments; }
             set
@@ -435,9 +289,33 @@ namespace MarkdownMonster
                 if (value == _recentDocuments) return;
                 _recentDocuments = value;
                 OnPropertyChanged(nameof(RecentDocuments));
+                OnPropertyChanged(nameof(RecentDocumentList));
             }
         }
-        private List<string> _recentDocuments = new List<string>();
+        private ObservableCollection<string> _recentDocuments = new ObservableCollection<string>();
+
+
+        /// <summary>
+        /// Internal property used to display the recent document list
+        /// </summary>
+        [JsonIgnore]
+        public ObservableCollection<RecentDocumentListItem> RecentDocumentList
+        {
+            get
+            {
+                var list = RecentDocuments.Take(5);
+                var docs = new ObservableCollection<RecentDocumentListItem>();
+                foreach (var doc in list)
+                {
+                    docs.Add(new RecentDocumentListItem
+                    {
+                        Filename = doc,
+                        DisplayFilename = FileUtils.GetCompactPath(doc, 70)
+                    });
+                }
+                return docs;
+            }
+        }
 
 
         /// <summary>
@@ -472,6 +350,7 @@ namespace MarkdownMonster
 	        {"mkdn", "markdown" },
 	        
             {"json", "json"},
+	        { "kavadocs", "json"},
 		    {"html", "html"},
 			{"htm", "html" },
 
@@ -513,6 +392,7 @@ namespace MarkdownMonster
 
 		    {"yaml", "yaml"},
 	        {"yml", "yaml"},
+	        {"diff", "diff" },
             {"txt", "text"},
 		    {"log", "text"}	        
 	    };
@@ -533,16 +413,21 @@ namespace MarkdownMonster
 	    /// </summary>
 	    public FolderBrowserConfiguration FolderBrowser { get; set; }
 
-		#endregion
+
+        /// <summary>
+        /// Configuration Settings for Git Integration
+        /// </summary>
+        public GitConfiguration Git { get; set; }
+
+        #endregion
 
 
+        #region Bug Reporting and Telemetry
 
-		#region Bug Reporting and Telemetry
-
-		/// <summary>
-		/// Determines whether errors are reported anonymously
-		/// </summary>
-		public bool ReportErrors { get; set; }
+        /// <summary>
+        /// Determines whether errors are reported anonymously
+        /// </summary>
+        public bool ReportErrors { get; set; }
 
 
 		/// <summary>
@@ -579,10 +464,39 @@ namespace MarkdownMonster
                 if (value == _isPreviewVisible) return;
                 _isPreviewVisible = value;
                 OnPropertyChanged(nameof(IsPreviewVisible));
-            } 
+            }
         }
-
         private bool _isPreviewVisible;
+
+
+        public bool IsDocumentOutlineVisible
+        {
+            get { return _IsDocumentOutlineVisible; }
+            set
+            {
+                if (value == _IsDocumentOutlineVisible) return;
+                _IsDocumentOutlineVisible = value;
+                OnPropertyChanged(nameof(IsDocumentOutlineVisible));
+            }
+        }
+        private bool _IsDocumentOutlineVisible;
+
+
+        public int MaxDocumentOutlineLevel
+        {
+            get => _maxOutlineLevel;
+            set
+            {
+                if (value == _maxOutlineLevel) return;
+                if (value > 6)
+                    value = 6;
+                if (value < 1)
+                    value = 1;
+                _maxOutlineLevel = value;
+                OnPropertyChanged(nameof(_maxOutlineLevel));
+            }
+        }
+        private int _maxOutlineLevel = 4;
 
 
         /// <summary>
@@ -595,6 +509,7 @@ namespace MarkdownMonster
         /// </summary>
         public bool DisableAddins { get; set; }
 
+        public bool DisableSplashScreen { get; set; }
 
         /// <summary>
         /// If set makes the application not use GPU accelleration.
@@ -607,9 +522,18 @@ namespace MarkdownMonster
 
         /// <summary>
         /// By default passwords in addins are encrypted with machine encryption
-        /// keys which means they are not portable. When this option is true
+        /// keys which means they are not portable. When false a fixed password
+        /// is used that is portable which is not as secure.
+        /// 
+        /// Changing this scheme will cause Registration Keys to require
+        /// re-entering passwords.
         /// </summary>
         public bool UseMachineEncryptionKeyForPasswords { get; set; }
+
+        /// <summary>
+        /// Timeout used on Statusbar messages
+        /// </summary>
+        public int StatusMessageTimeout { get; set; } = 6000;
 
         #endregion
 
@@ -645,23 +569,20 @@ namespace MarkdownMonster
 
 		internal string InternalCommonFolder { get; set; }
 
-        internal string AddinsFolder => Path.Combine(CommonFolder, "Addins");
-
-        /// <summary>
-        /// Statusbar timeout length
-        /// </summary>
-        internal int StatusTimeout { get; set; } = 7000;
-
+        internal string AddinsFolder => Path.Combine(CommonFolder, "Addins");        
         #endregion
 
         public ApplicationConfiguration()
         {
+            Editor = new EditorConfiguration();
+            Git = new GitConfiguration();
             MarkdownOptions = new MarkdownOptionsConfiguration();
             WindowPosition = new WindowPositionConfiguration();
 	        FolderBrowser = new FolderBrowserConfiguration();	        
             ApplicationUpdates = new ApplicationUpdatesConfiguration();
             OpenDocuments = new List<MarkdownDocument>();
-
+            
+            
             InternalCommonFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Markdown Monster");
             CommonFolder = InternalCommonFolder;
             LastFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
@@ -672,7 +593,7 @@ namespace MarkdownMonster
             AutoSaveDocuments = false;
 
             RecentDocumentsLength = 12;
-            RememberLastDocumentsLength = 3;
+            RememberLastDocumentsLength = 5;
             
             
             BugReportUrl = "https://markdownmonster.west-wind.com/bugreport/bugreport.ashx?method=ReportBug";
@@ -681,16 +602,9 @@ namespace MarkdownMonster
             SendTelemetry = true;
 
             ApplicationTheme = Themes.Dark;
-            RenderTheme = "Github";
+            PreviewTheme = "Github";
             EditorTheme = "twilight";
-            EditorFont = "Consolas";
-            EditorFontSize = 17;
-            EditorWrapText = true;
-            EditorHighlightActiveLine = true;
             
-            EditorEnableSpellcheck = true;
-            EditorDictionary = "EN_US";
-            EditorKeyboardHandler = "default";  // vim,emacs
 
             DefaultCodeSyntax = "csharp";
 
@@ -700,17 +614,53 @@ namespace MarkdownMonster
 	        
 			TerminalCommand = "powershell.exe";
 			TerminalCommandArgs = "-noexit -command \"cd '{0}'\"";
-            OpenFolderCommand = "explorer.exe";
-
+            OpenFolderCommand = "explorer.exe";            
+            
             WebBrowserPreviewExecutable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),@"Google\Chrome\Application\chrome.exe");
             
-           ReportErrors = true;
+            ReportErrors = true;
 
             UseSingleWindow = true;
 
             IsPreviewVisible = true;
+            IsDocumentOutlineVisible = true;
             OpenInPresentationMode = false;
             AlwaysUsePreviewRefresh = false;		
+        }
+
+        
+
+
+        protected override void OnInitialize(IConfigurationProvider provider, string sectionName, object configData)
+        {
+            base.OnInitialize(provider, sectionName, configData);
+
+            if(string.IsNullOrEmpty(Git.GitClientExecutable))
+                Git.GitClientExecutable = mmFileUtils.FindGitClient();
+            if (string.IsNullOrEmpty(Git.GitDiffExecutable))
+                Git.GitDiffExecutable = mmFileUtils.FindGitDiffTool();
+
+            if (string.IsNullOrEmpty(ImageEditor))
+                ImageEditor = mmFileUtils.FindImageEditor();
+
+            // TODO: Remove in future version - added in 1.11
+            // fix up new dictionary files
+            var dict = Editor.Dictionary.ToLower();
+            switch (dict)
+            {
+                case "en_us":
+                    Editor.Dictionary = "en-US";
+                    break;
+                case "de_de":
+                    Editor.Dictionary = "de";
+                    break;
+                case "fr_fr":
+                    Editor.Dictionary = "fr";
+                    break;
+                case "es_es":
+                    Editor.Dictionary = "es";
+                    break;
+            }
         }
 
         public void AddRecentFile(string filename)
@@ -725,9 +675,14 @@ namespace MarkdownMonster
             OnPropertyChanged(nameof(RecentDocuments));
 
             if (RecentDocuments.Count > RecentDocumentsLength)
-                RecentDocuments = RecentDocuments.Take(RecentDocumentsLength).ToList();            
+            {
+                // the hard way to force collection to properly refresh so bindings work properly
+                var recents = RecentDocuments.Take(RecentDocumentsLength).ToList();
+                RecentDocuments.Clear();
+                foreach (var recent in recents)
+                    RecentDocuments.Add(recent);
+            }
         }
-
 
         
         #region Configuration Settings
@@ -829,8 +784,9 @@ namespace MarkdownMonster
         }
         #endregion
 
+
         #region  INotifyPropertyChanged
-        public event PropertyChangedEventHandler PropertyChanged;        
+        public event PropertyChangedEventHandler PropertyChanged;
         
         public virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
         {

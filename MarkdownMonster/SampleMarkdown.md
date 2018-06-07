@@ -4,12 +4,12 @@
 Here are a few tips to get you started:
 
 * To create a new document press **Ctrl-n** or **click the @icon-plus-circle icon** in the toolbar
-* Click the **@icon-files-o icon** to open the Folder Browser to select and manage files
+* Click the **@icon-bars icon** to open the Folder Browser manage files
 * To change **Editor or Preview Themes**, click on the dropdown lists on the bottom right status bar:  
 ![Image and Preview Themes on the toolbar](https://markdownmonster.west-wind.com/docs/images/EditorPreviewThemeUi.png) 
 
 * For **light editor themes** look at `visualstudio`, `github` or `xcode`  
-* For **dark editor themes** look at `twilight`, `monokai`, `terminal`
+* For **dark editor themes** look at `twilight`,`vscodedark`, `monokai`, `terminal`
 
 ### Problems? Please let us know
 
@@ -47,6 +47,8 @@ line because there's no double space at the end.
 The following line has a soft break at the end (two spaces at end)  
 This line should be following on the very next line.
 
+You can use **View -> Show Invisible Characters** to show all white space and returns.
+
 ---
 
 ### Links
@@ -63,8 +65,11 @@ Go the Help Builder sitest Wind site:
 ---
 
 ### Images
+Images are similar to links:
+
 ![Help Builder Web Site](https://helpbuilder.west-wind.com/Images/wwhelp_128.png)
 
+You can embed images by pasting from the Clipboard (**ctrl-v**), using the @icon-image Image Dialog, or by dragging and dropping into the document from the the Folder Browser, or Explorer.
 
 ### Block Quotes
 Block quotes are callouts that are great for adding notes or warnings into documentation.
@@ -72,10 +77,22 @@ Block quotes are callouts that are great for adding notes or warnings into docum
 > ### @icon-info-circle Headers break on their own
 > Note that headers don't need line continuation characters as they are block elements and automatically break. Only text lines require the double spaces for single line breaks.
 
+You can also use simple block quotes:
+
+> **Note:** Block quotes can be used to highlight important ideas.
+
 ### Fontawesome Icons
 Help Builder includes a custom syntax for FontAwesome icons in its templates. You can embed a `@ icon-` followed by a font-awesome icon name to automatically embed that icon without full HTML syntax.
 
 @icon-gear Configuration
+
+
+### Emojiis
+You can also embed Emojiis into your markdown using the Emoji dialog or common 
+
+:smile: :rage: :sweat: :point_down:
+
+:-) :-( :-/ 
 
 ### HTML Markup
 You can also embed plain HTML markup into the page if you like. For example, if you want full control over fontawesome icons you can use this:
@@ -127,19 +144,30 @@ Now a nested list:
 ### Inline Code
 If you want to embed code in the middle of a paragraph of text to highlight a coding syntax or class/member name you can use inline code syntax:
 
-Structured statements like `for x =1 to 10` loop structures 
-can be codified using single back ticks.
+```markdown
+Inline code or member references  like `SomeMethod()` can be codified...
+```
+---
+
+Inline code or member references  like `SomeMethod()` can be codified... You can use the `'{}'`** menu or **Ctrl-\`** to embed inline code.
+
 
 ### Code Blocks with Syntax Highlighting
-Markdown supports code blocks syntax in a variety of ways:
+Markdown supports code blocks syntax in a couple of ways:
 
-The following code demonstrates:
+Using and indented text block for code:
 
 ---
-Some rendered text
+
+Some rendered text...
 
     // This is code by way of four leading spaces
     // or a leading tab
+    int x = 0;
+    string text = null;
+    for(int i; i < 10; i++;) {
+        text += text + "Line " + i;
+    }
 
 More text here
 
@@ -148,7 +176,9 @@ More text here
 ### Fenced Code Blocks
 You can also use triple back ticks plus an optional coding language to support for syntax highlighting.
 
-The following is C#:
+The following is C# code.
+
+---
 
 ```csharp
 // this code will be syntax highlighted
@@ -160,9 +190,9 @@ for(var i=0; i++; i < 10)
 
 Many languages are supported: html, xml, javascript, css, csharp, foxpro, vbnet, sql, python, ruby, php and many more. Use the Code drop down list to get a list of available languages.
 
-You can also leave out the language to get no syntax coloring but the code box:
+You can also leave out the language to attempt auto-detection or use `txt` for plain text:
 
-```
+```txt
 robocopy c:\temp\test d:\temp\test
 ```
 
@@ -175,13 +205,38 @@ Here is some text that includes a Footnote [^1] in the middle of its text. And h
 [^2]: Source: [Markdown Monster Web Site](http://markdownmonster.west-wind.com)
 
 ### Pipe Tables
-Tables look like this:
+[Pipe Tables](https://github.com/lunet-io/markdig/blob/master/src/Markdig.Tests/Specs/PipeTableSpecs.md) can be used to create simple single line tables:
+
+---
 
 |size | material     | color       |
 |---- | ------------ | ------------|
-|9    | leather      | brown  |
+|9    | leather      | brown **fox**  |
 |10   | hemp canvas  | natural |
 |11   | glass        | transparent |
 
+> **Note:** Cell lines don't have to line up to render properly. Max columns in any row determines table columns for the entire table. Pipe tables also don't need leading and trailing pipes to render as tables, but make sure you check compatibility with your final rendering site.
+
+### Grid Tables
+[Grid Tables](https://github.com/lunet-io/markdig/blob/master/src/Markdig.Tests/Specs/GridTableSpecs.md) are a bit more flexible than Pipe Tables in that they can have multiple lines of text per cell and handle multi-line embedded Markdown text.
+
+--- 
++---------+---------+
+| Header  | Header  |
+| Column1 | Column2 |
++=========+=========+
+| 1. ab   | > This is a quote
+| 2. cde  | > For the second column 
+| 3. f    |
++---------+---------+
+| Second row spanning
+| on two columns
++---------+---------+
+| Back    |         |
+| to      |         |
+| one     |         |
+| column  |         | 
 
 
+> ### @icon-info-circle Use the @icon-table Table Editor 
+> For easier table data entry and pretty rendered tables you can use the table editor which provides grid based table data entry. You can use the table editor with **Pipe**, **Grid** and **HTML** tables.

@@ -1,10 +1,12 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using MarkdownMonster.Windows;
 using Westwind.Utilities;
 
@@ -64,9 +66,10 @@ namespace MarkdownMonster
 
             SpellcheckSuggestions(suggestions, range);
             AddEditorContext();
+
+            AddUndoRedo();
             AddCopyPaste();
             
-
             Show();
         }
 
@@ -91,7 +94,11 @@ namespace MarkdownMonster
                     Header = sg,
                     FontWeight = FontWeights.Bold
                 };
-                mi.Click += (o, args) => model.ActiveEditor.AceEditor.replaceSpellRange(range, sg);
+                mi.Click += (o, args) =>
+                {
+                    model.ActiveEditor.AceEditor.replaceSpellRange(range, sg);
+                    model.ActiveEditor.IsDirty();
+                };
                 ContextMenu.Items.Add(mi);
                 hasSuggestions = true;
             }
@@ -104,7 +111,22 @@ namespace MarkdownMonster
                 Header = "Add to dictionary",
                 HorizontalContentAlignment = HorizontalAlignment.Right
             };
-            mi2.Click += (o, args) => model.ActiveEditor.AceEditor.addWordSpelling(((dynamic)range).misspelled);
+
+            
+            mi2.Click += (o, args) =>
+            {
+                if (range == DBNull.Value)
+                {
+                    model.Window.ShowStatusError("No misspelled word selected. Word wasn't added to dictionary.");
+                    return;
+                }
+
+                var text = ((dynamic)range).misspelled as string;
+                model.ActiveEditor.AceEditor.addWordSpelling(text);
+                model.Window.ShowStatus("Word added to dictionary.", mmApp.Configuration.StatusMessageTimeout);
+                
+                
+            };
             ContextMenu.Items.Add(mi2);
             ContextMenu.Items.Add(new Separator());
 
@@ -123,15 +145,29 @@ namespace MarkdownMonster
             ContextMenu.Items.Add(miCut);
 
             var miCopy = new MenuItem() { Header = "Copy", InputGestureText="ctrl-c" };
-            miCopy.Click += (o, args) => Clipboard.SetText(selText);
+            miCopy.Click += (o, args) =>
+            {
+                ClipboardHelper.SetText(selText, true);
+            };
             ContextMenu.Items.Add(miCopy);
 
             var miCopyHtml = new MenuItem() { Header = "Copy As Html", InputGestureText="ctrl-shift-c" };
-            miCopyHtml.Command = Model.CopyAsHtmlCommand;
+            miCopyHtml.Command = Model.Commands.CopyAsHtmlCommand;
             ContextMenu.Items.Add(miCopyHtml);
 
-            var miPaste = new MenuItem() { Header = "Paste", InputGestureText="ctrl-v"};
-            miPaste.Click += (o, args) => model.ActiveEditor?.SetSelection(Clipboard.GetText());
+            bool hasClipboardData = false;
+            var miPaste = new MenuItem() { Header = "Paste", InputGestureText = "ctrl-v" };
+            if (ClipboardHelper.ContainsImage())
+            {
+                hasClipboardData = true;
+                miPaste.Header = "Paste Image";
+                miPaste.Click += (o, args) => model.ActiveEditor?.PasteOperation();                
+            }
+            else
+                hasClipboardData = ClipboardHelper.ContainsText();
+
+            miPaste.IsEnabled = hasClipboardData;
+
             ContextMenu.Items.Add(miPaste);
 
             if (string.IsNullOrEmpty(selText))
@@ -156,12 +192,31 @@ namespace MarkdownMonster
                 }
             }
 
-            if (!Clipboard.ContainsText())
-                miPaste.IsEnabled = false;
+            
+        }
 
+        public void AddUndoRedo()
+        {
 
-            if (ContextMenu.Items.Count > 0)
-                ContextMenu.Items.Add(new Separator());
+            var editor = Model.ActiveEditor;
+
+            var undoManager = editor.AceEditor.editor.session.getUndoManager(false);
+            bool hasUndo = undoManager.hasUndo(false);
+            bool hasRedo = undoManager.hasRedo(false);
+
+            var miUndo = new MenuItem { Header = "Undo", InputGestureText = "ctrl-z" };
+            if (!hasUndo)
+                miUndo.IsEnabled = false;
+            miUndo.Click += (o, args) => Model.ActiveEditor.AceEditor.editor.undo(false);
+            ContextMenu.Items.Add(miUndo);
+
+            var miRedo = new MenuItem() { Header = "Redo", InputGestureText = "ctrl-y" };
+            if (!hasRedo)
+                miRedo.IsEnabled = false;
+            miRedo.Click += (o, args) => Model.ActiveEditor.AceEditor.editor.redo(false);            
+            ContextMenu.Items.Add(miRedo);
+           
+            ContextMenu.Items.Add(new Separator());
         }
 
         /// <summary>
@@ -285,7 +340,7 @@ namespace MarkdownMonster
             if (string.IsNullOrEmpty(line))
                 return false;
 
-            if (line.Trim().StartsWith("|") && line.Trim().EndsWith("|") ||
+            if (line.Contains("|")  ||
                 line.Trim().StartsWith("+-") && line.Trim().EndsWith("-+"))
 
             {
@@ -298,8 +353,8 @@ namespace MarkdownMonster
                     var editor = Model.ActiveEditor;
 
                     var lineText = editor.GetCurrentLine();
-                    if (!(lineText.Trim().StartsWith("|") && lineText.Trim().EndsWith("|") ||
-                          lineText.Trim().StartsWith("+") && lineText.Trim().EndsWith("+")))
+                    if (!(lineText.Contains("|") &&
+                        !(lineText.Trim().StartsWith("+") && lineText.Trim().EndsWith("+"))))
                         return;
 
                     var startPos = editor.GetCursorPosition();
@@ -308,10 +363,16 @@ namespace MarkdownMonster
                     for (int i = row - 1; i > -1; i--)
                     {
                         lineText = editor.GetLine(i);
-                        if (!(lineText.Trim().StartsWith("|") && lineText.Trim().EndsWith("|") ||
-                              lineText.Trim().StartsWith("+") && lineText.Trim().EndsWith("+")))
+                        if (!(lineText.Contains("|")  &&
+                            !(lineText.Trim().StartsWith("+") && lineText.Trim().EndsWith("+"))))
                         {
                             startRow = i +1;
+                            break;
+                        }
+
+                        if (i == 0)
+                        {
+                            startRow = 0;
                             break;
                         }
                     }
@@ -319,16 +380,16 @@ namespace MarkdownMonster
                     var endRow = startPos.row;
                     for (int i = row + 1; i < 99999999; i++)
                     {
-                        lineText = editor.GetLine(i);
-                        if (!(lineText.Trim().StartsWith("|") && lineText.Trim().EndsWith("|") ||
-                              lineText.Trim().StartsWith("+") && lineText.Trim().EndsWith("+")))
+                        lineText = editor.GetLine(i);                       
+                        if (!lineText.Contains("|")  &&
+                            !(lineText.Trim().StartsWith("+") && lineText.Trim().EndsWith("+")))
                         {
                             endRow = i -1;
                             break;
                         }
                     }
 
-                    if (endRow == startRow)
+                    if (endRow == startRow || endRow < startRow + 2)
                         return;
 
                     StringBuilder sb = new StringBuilder();
@@ -344,11 +405,14 @@ namespace MarkdownMonster
                 };
                 ContextMenu.Items.Add(mi);
                 return true;
-            }
-            else if (line.Trim().StartsWith("<td>") && line.Trim().EndsWith("</td>") ||
-                     line.Trim().StartsWith("<tr>") && line.Trim().EndsWith("</tr>") ||
-                     line.Trim().StartsWith("<th>") && line.Trim().EndsWith("</th>") ||
-                     line.Trim() == "<table>" || line.Trim() == "<thead>")
+            }            
+            else if (line.Trim().StartsWith("<td ",StringComparison.InvariantCultureIgnoreCase)  ||
+                     line.Trim().StartsWith("<tr ", StringComparison.InvariantCultureIgnoreCase) ||
+                     line.Trim().StartsWith("<th ", StringComparison.InvariantCultureIgnoreCase) ||
+                     line.Trim().StartsWith("<table>", StringComparison.InvariantCultureIgnoreCase) ||
+                     line.Trim().StartsWith("<table ", StringComparison.InvariantCultureIgnoreCase) ||
+                     line.Trim().Equals("<thead>", StringComparison.InvariantCultureIgnoreCase) ||
+                     line.Trim().Equals("<tbody>", StringComparison.InvariantCultureIgnoreCase) )
             {
                 var mi = new MenuItem
                 {
@@ -367,8 +431,7 @@ namespace MarkdownMonster
                     for (int i = row - 1; i > -1; i--)
                     {
                         lineText = editor.GetLine(i);
-                        if (lineText.Trim() == "<table>")
-                        {
+                        if (lineText.Trim().StartsWith("<table", StringComparison.InvariantCultureIgnoreCase))                        {
                             startRow = i;
                             break;
                         }
@@ -381,7 +444,7 @@ namespace MarkdownMonster
                     for (int i = row + 1; i < 99999999; i++)
                     {
                         lineText = editor.GetLine(i);
-                        if (lineText.Trim() == "</table>")
+                        if (lineText.Trim().Equals("</table>", StringComparison.InvariantCultureIgnoreCase))
                         {
                             endRow = i;
                             break;
@@ -396,8 +459,7 @@ namespace MarkdownMonster
                     {
                         sb.AppendLine(editor.GetLine(i));
                     }
-
-                    MessageBox.Show(sb.ToString());
+                    
                     // select the entire table
                     Model.ActiveEditor.AceEditor.SetSelectionRange(startRow - 1, 0, endRow + 1, 0, pos);
 

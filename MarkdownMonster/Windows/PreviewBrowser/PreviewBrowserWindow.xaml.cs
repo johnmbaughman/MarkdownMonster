@@ -1,18 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 using MahApps.Metro.Controls;
+using MarkdownMonster.AddIns;
+using MarkdownMonster.Windows.PreviewBrowser;
 
 namespace MarkdownMonster.Windows
 {
@@ -22,26 +13,39 @@ namespace MarkdownMonster.Windows
     public partial class PreviewBrowserWindow : MetroWindow, IPreviewBrowser
     {
 
-        public PreviewWebBrowser PreviewBrowser;
-
         public bool IsClosed { get; set; }
 
         public AppModel Model { get; set; }
 
-        public PreviewBrowserWindow()
+        IPreviewBrowser PreviewBrowser { get; set; }
+
+         public PreviewBrowserWindow()
         {
             InitializeComponent();
 
             mmApp.SetThemeWindowOverride(this);
 
-            PreviewBrowser = new PreviewWebBrowser(Browser);
-
             Model = mmApp.Model;
-            DataContext = Model;
-        
+            DataContext = Model;        
+            
+            LoadInternalPreviewBrowser();
             SetWindowPositionFromConfig();
         }
-        
+
+        void LoadInternalPreviewBrowser()
+        {
+            // Allow addins to load their PreviewBrowser control
+            PreviewBrowser = AddinManager.Current.RaiseGetPreviewBrowserControl();
+
+
+            // if not we use the default 
+            if (PreviewBrowser == null)
+                PreviewBrowser = new IEWebBrowserControl() { Name = "PreviewBrowser" };
+
+            PreviewBrowserContainer.Children.Add(PreviewBrowser as UIElement);            
+        }
+
+
         public void SetWindowPositionFromConfig()
         {
             var config = mmApp.Model.Configuration.WindowPosition;
@@ -59,10 +63,11 @@ namespace MarkdownMonster.Windows
         }
 
         protected override void OnClosing(CancelEventArgs e)
-        {
+        {            
             IsClosed = true;
 
             var config = mmApp.Model.Configuration.WindowPosition;
+
 
             config.PreviewLeft = Convert.ToInt32(Left);
             config.PreviewTop = Convert.ToInt32(Top);
@@ -70,6 +75,12 @@ namespace MarkdownMonster.Windows
             config.PreviewHeight = Convert.ToInt32(Height);
 
             AttachDockingBehavior(true);
+
+
+            //Model.Window.PreviewBrowser = PreviewBrowser;            
+            PreviewBrowserContainer.Children.Clear();
+            PreviewBrowser = null;
+            Model.Window.PreviewBrowser = null;
         }
 
 
@@ -100,12 +111,6 @@ namespace MarkdownMonster.Windows
                 Height = virtualScreenHeight - 40;
         }
 
-        private void Button_Handler(object sender, RoutedEventArgs e)
-        {
-            Model.Window.Button_Handler(Model.Window.MenuItemPreviewConfigureSync, null);
-        }
-
-
         #region AlwaysOnTop and Docking Behaviors
         public void AttachDockingBehavior(bool turnOn = true)
         {
@@ -130,6 +135,7 @@ namespace MarkdownMonster.Windows
             Top = Model.Window.Top;
             Height = Model.Window.Height;
         }
+        
 
         private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
         {
@@ -139,17 +145,6 @@ namespace MarkdownMonster.Windows
         private void Window_LocationChanged(object sender, EventArgs e)
         {
             DockToMainWindow();
-        }
-
-
-        public void PreviewMarkdownAsync(MarkdownDocumentEditor editor, bool keepScrollPosition, string renderedHtml = null)
-        {
-            PreviewBrowser.PreviewMarkdownAsync(editor, keepScrollPosition, renderedHtml);
-        }
-
-        public void PreviewMarkdown(MarkdownDocumentEditor editor, bool keepScrollPosition, bool showInBrowser, string renderedHtml = null)
-        {
-            PreviewBrowser.PreviewMarkdown(editor, keepScrollPosition,showInBrowser,renderedHtml);
         }
 
         private void CheckPreviewAlwaysOnTop_Click(object sender, RoutedEventArgs e)
@@ -166,6 +161,30 @@ namespace MarkdownMonster.Windows
                 AttachDockingBehavior();
             else
                 AttachDockingBehavior(false);
+        }
+
+        #endregion
+
+        #region IPreviewBrowser
+        public void PreviewMarkdownAsync(MarkdownDocumentEditor editor = null, bool keepScrollPosition = false, string renderedHtml = null, int editorLineNumber = -1)
+        {            
+            PreviewBrowser.PreviewMarkdownAsync(editor, keepScrollPosition, renderedHtml);
+        }
+
+        public void PreviewMarkdown(MarkdownDocumentEditor editor = null, bool keepScrollPosition = false, bool showInBrowser = false, string renderedHtml = null, int editorLineNumber = -1)
+        {
+            PreviewBrowser.PreviewMarkdown(editor, keepScrollPosition,showInBrowser,renderedHtml);
+        }
+
+        public void Navigate(string url)
+        {
+            PreviewBrowser.Navigate(url);
+        }
+
+
+        public void ExecuteCommand(string command, params dynamic[] args)
+        {
+            PreviewBrowser.ExecuteCommand(command, args);
         }
         #endregion
     }

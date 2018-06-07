@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.NetworkInformation;
 using System.Text;
+using MarkdownMonster.Windows;
 using Westwind.Utilities;
 
 namespace MarkdownMonster
@@ -12,8 +13,8 @@ namespace MarkdownMonster
         /// <summary>
         /// The key to unlock this application
         /// </summary>        
-        static string ProKey;
-        static string RegisterFile;
+        static readonly string ProKey;
+        static readonly string RegisterFile;
 
         static UnlockKey()
         {
@@ -52,8 +53,6 @@ namespace MarkdownMonster
             }
         }
 
-        public static int FreeThreadLimit = 10;
-        public static int FreeSitesLimit = 20;
 
         static RegTypes _regType = RegTypes.Free;
 
@@ -129,9 +128,52 @@ namespace MarkdownMonster
         /// <returns></returns>
         static string EncodeKey(string key)
         {
-            var encoded = Encryption.ComputeHash(key,"HMACSHA256", mmApp.InternalMachineKey);            
-            //Debug.WriteLine($"encoded: {key} {encoded} {mmApp.EncryptionMachineKey}");
+            var encoded = Encryption.ComputeHash(key,"HMACSHA256", mmApp.InternalMachineKey);                        
             return encoded;
+        }
+        
+        static System.Timers.Timer timer;
+        static RegisterDialog regDialog;
+
+        public static void Startup()
+        {
+            if (!Unlocked && mmApp.Configuration.ApplicationUpdates.AccessCount > 50)
+            {
+                timer = new System.Timers.Timer(12 * 1000 * 60);
+                timer.Elapsed += (s, ev) =>
+                {
+                    mmApp.Model?.Window?.Dispatcher?.Invoke(() =>
+                    {
+                        try
+                        {
+                            if (regDialog != null && regDialog.IsVisible)
+                                return;
+
+                            regDialog = new RegisterDialog
+                            {
+                                Owner = mmApp.Model.Window
+                            };
+                            regDialog.ShowDialog();
+                        }
+                        catch { }
+                    });
+                };
+                timer.Start();
+            }
+        }
+
+        public static void Shutdown()
+        {
+            timer?.Stop();
+            timer?.Dispose();
+            timer = null;
+
+            try
+            {
+                regDialog?.Close();
+            }
+            catch { }
+            regDialog = null;
         }
     }
 

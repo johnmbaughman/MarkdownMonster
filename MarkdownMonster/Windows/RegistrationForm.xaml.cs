@@ -18,7 +18,7 @@ namespace MarkdownMonster.Windows
 
             if (UnlockKey.IsRegistered())
             {
-                LabelIsRegistered.Text = "This copy is already registered. Only fill out to clear or reset.";
+                LabelIsRegistered.Text = "This copy is already registered. Only enter key to clear or reset.";
                 LabelIsRegistered.FontWeight = FontWeights.DemiBold;
                 LabelIsRegistered.Foreground = new SolidColorBrush(Colors.LightGreen);
             }
@@ -41,6 +41,8 @@ namespace MarkdownMonster.Windows
                 MessageBox.Show("Thank you for your registration.", mmApp.ApplicationName,
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 Close();
+
+                UnlockKey.Shutdown();
             }
             else
             {

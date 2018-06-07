@@ -27,6 +27,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Controls;
 using System.Windows.Media;
+using FontAwesome.WPF;
+using MarkdownMonster.Windows;
+using MarkdownMonster.Windows.PreviewBrowser;
 using Westwind.Utilities;
 
 namespace MarkdownMonster.AddIns
@@ -53,6 +56,11 @@ namespace MarkdownMonster.AddIns
         /// Includes access to Configuration and the Main Window
         /// </summary>
         public AppModel Model { get; set; }
+
+        /// <summary>
+        /// Determines whether this addin is enabled
+        /// </summary>
+        public bool IsEnabled { get; set; } = true;
 
         /// <summary>
         /// List of menu items that are used to extend MM
@@ -228,7 +236,11 @@ namespace MarkdownMonster.AddIns
         /// You can override this method to capture commands that are not
         /// already handled by the editor.        
         /// </summary>
-        /// <param name="command"></param>
+        /// <remarks>
+        /// 
+        /// </remarks>
+        /// <param name="command">Command Name</param>
+        /// <param name="parameter">Command parameter</param>
         public virtual void OnNotifyAddin(string command, object parameter)
         {
             
@@ -282,6 +294,24 @@ namespace MarkdownMonster.AddIns
         }
 
         /// <summary>
+        /// Allows you to detect Preview Browser Link navigation
+        /// and take over the navigation. 
+        /// </summary>
+        /// <remarks>
+        /// If multiple handlers have registered in multiple addins,
+        /// the first one to handle navigation wins. Be conservative
+        /// in returning true
+        /// </remarks>
+        /// <param name="url">The URL that was navigated in the preview</param>
+        /// <param name="src">The actual href ``referenced in the URL without browser fixup which might be different than the URL 
+        /// ie. relative urls or custom monikers</param>
+        /// <returns>true to specify you handled the navigation, false to let the default behavior run</returns>
+        public virtual bool OnPreviewLinkNavigation(string url, string src)
+        {
+            return false;
+        }
+
+        /// <summary>
         /// If this addin wants to provide a custom Markdown Parser this method can 
         /// be overriden to do it.
         /// </summary>
@@ -307,6 +337,19 @@ namespace MarkdownMonster.AddIns
             return GetMarkdownParser();
 #pragma warning restore CS0618 // Type or member is obsolete
 
+        }
+
+        /// <summary>
+        /// Allows returning a WPF control that implements IPreviewBrowser and 
+        /// that handles previewing the output from documents.
+        /// 
+        /// This control should return an IPreviewBrowser interface implemented
+        /// on a WPF UIControl (UserControl most likely).
+        /// </summary>
+        /// <returns></returns>
+        public virtual IPreviewBrowser GetPreviewBrowserUserControl()
+        {
+            return null;
         }
 
         /// <summary>
@@ -471,15 +514,35 @@ namespace MarkdownMonster.AddIns
 
 
         /// <summary>
-        /// Shows a Status Message on the Status bar
+        /// Displays a status message on the main application's status bar
         /// </summary>
-        /// <param name="message">Message to display</param>
-        /// <param name="timeoutMs">optional timeout in milliseconds</param>
-        public void ShowStatus(string message, int timeoutMs = 0)
-        {            
-            Model.Window.ShowStatus(message, timeoutMs);            
+        /// <param name="message"></param>        
+        /// <param name="timeoutMs"></param>
+        /// <param name="icon"></param>
+        /// <param name="color"></param>
+        /// <param name="spin"></param>
+        public void ShowStatus(string message = null, int timeoutMs = 0,
+            FontAwesomeIcon icon = FontAwesomeIcon.None,
+            Color color = default(Color),
+            bool spin = false)
+        {
+            Model.Window.ShowStatus(message, timeoutMs, icon, color, spin);
         }
 
+        /// <summary>
+        /// Displays and error message on the status bar using common
+        /// default values (red icon, standard timeout, warning icon)
+        /// </summary>
+        /// <param name="message"></param>
+        /// <param name="timeout"></param>
+        /// <param name="icon"></param>
+        /// <param name="color"></param>
+        public void ShowStatusError(string message, int timeout = -1,
+            FontAwesomeIcon icon = FontAwesomeIcon.Warning,
+            Color color = default(Color))
+        {
+            Model.Window.ShowStatusError(message,timeout,icon,color);
+        }
 
         /// <summary>
         /// Lets you modify the status icon and color on the status bar.
@@ -487,11 +550,10 @@ namespace MarkdownMonster.AddIns
         /// <param name="icon"></param>
         /// <param name="color"></param>
         /// <param name="spin"></param>
+        [Obsolete("Use ShowStatusError instead")]
         public void SetStatusIcon(FontAwesome.WPF.FontAwesomeIcon icon, Color color,bool spin = false)
         {
-            Model.Window.SetStatusIcon(icon, color,spin);
-            
-            
+            Model.Window.SetStatusIcon(icon, color,spin);                        
         }
         #endregion
 
@@ -583,5 +645,8 @@ namespace MarkdownMonster.AddIns
         {
             return Id ?? Name ?? "no name";
         }
+
+
+      
     }    
 }
