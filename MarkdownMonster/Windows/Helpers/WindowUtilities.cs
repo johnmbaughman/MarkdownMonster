@@ -26,8 +26,10 @@ namespace MarkdownMonster.Windows
     /// </summary>
     public class WindowUtilities
     {
-        private delegate void EmptyDelegate();
 
+
+        static readonly FieldInfo DisableProcessCountField = typeof(Dispatcher).GetField("_disableProcessingCount", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static void EmptyMethod() { }
 
         /// <summary>
         /// Idle loop to let events fire in the UI
@@ -38,20 +40,39 @@ namespace MarkdownMonster.Windows
         public static void DoEvents()
         {
             try
-            {
-                Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.Background, new EmptyDelegate(delegate { }));
-            }
-            catch
             {                
+                // This can fail if the dispatcher is disabled by another process
+                if (!IsDispatcherDisabled())
+                    Dispatcher.CurrentDispatcher.Invoke(EmptyMethod, DispatcherPriority.Background);
+            }
+            catch(Exception ex)
+            {
+                mmApp.Log("DoEvents failed", ex);              
             }
         }
 
+        public static bool IsDispatcherDisabled(Dispatcher dispatcher = null)
+        {
+            if (dispatcher == null)
+                dispatcher = Dispatcher.CurrentDispatcher;
+
+            // This can fail if the dispatcher is disabled by another process
+            if (DisableProcessCountField == null)
+                return true;
+
+            return (int) DisableProcessCountField.GetValue(dispatcher) != 0;
+        }
+
         /// <summary>
-        /// Forces lost focus on the active control in a Window so that the a toolbar click 
-        /// works properly accepting the last controls value input.
-        /// </summary>
-        /// <param name="window"></param>
-        public static void FixFocus(Window window, System.Windows.Controls.Control control)
+    /// Forces lost focus on the active control in a Window to force the selected control
+    /// to databind.
+    /// Typical scenario: Toolbar clicks (which don't cause a focus change) don't see
+    /// latest control state of the active control because it doesn't know focus has
+    /// changed. This forces the active control to unbind       
+    /// </summary>
+    /// <param name="window">Active window</param>
+    /// <param name="control">Control to force focus to briefly to force active control to bind</param>
+    public static void FixFocus(Window window, System.Windows.Controls.Control control)
         {
             var ctl = FocusManager.GetFocusedElement(window);
             if (ctl == null)
@@ -114,7 +135,7 @@ namespace MarkdownMonster.Windows
         /// <param name="ksc"></param>
         /// <param name="command"></param>
         /// <returns>KeyBinding - Window.InputBindings.Add(keyBinding)</returns>
-        public static KeyBinding CreateKeyboardShortcutBinding(string ksc, ICommand command)
+        public static KeyBinding xCreateKeyboardShortcutBinding(string ksc, ICommand command, object commandParameter = null)
         {
             if (string.IsNullOrEmpty(ksc))
                 return null;
@@ -152,6 +173,8 @@ namespace MarkdownMonster.Windows
 
                 // Whatever command you need to bind to
                 kb.Command = command;
+                if (commandParameter != null)
+                   kb.CommandParameter = commandParameter;
 
                 return kb;
             }
@@ -217,6 +240,9 @@ namespace MarkdownMonster.Windows
         /// <returns></returns>
         public static Bitmap BitmapSourceToBitmap(BitmapSource source)
         {
+            if (source == null)
+                return null;
+
             Bitmap bmp = new Bitmap(
                 source.PixelWidth,
                 source.PixelHeight,
@@ -405,9 +431,20 @@ namespace MarkdownMonster.Windows
 
         [DllImport("SHCore.dll", SetLastError = true)]
         private static extern void GetProcessDpiAwareness(IntPtr hprocess, out ProcessDpiAwareness awareness);
-        
+
         #endregion
 
+
+        /// <summary>
+        /// Returns the active screen's size in pixels
+        /// </summary>
+        /// <param name="window"></param>
+        /// <returns></returns>
+        public static Rectangle GetScreenDimensions(Window window)
+        {
+            var screen = Screen.FromHandle(new WindowInteropHelper(window).Handle);
+            return screen.Bounds;
+        }
     }
 
     public enum ProcessDpiAwareness

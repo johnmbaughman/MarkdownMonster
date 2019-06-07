@@ -3,6 +3,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.NetworkInformation;
 using System.Text;
+using System.Windows.Controls;
+using System.Windows.Media;
+using FontAwesome.WPF;
 using MarkdownMonster.Windows;
 using Westwind.Utilities;
 
@@ -18,7 +21,7 @@ namespace MarkdownMonster
 
         static UnlockKey()
         {
-            RegisterFile = Path.Combine( mmApp.Configuration.InternalCommonFolder,"Registered.key");
+            RegisterFile = Path.Combine( mmApp.Configuration.CommonFolder,"Registered.key");
             ProKey = Encoding.UTF8.GetString(Convert.FromBase64String(mmApp.Signature));
         }
 
@@ -36,6 +39,21 @@ namespace MarkdownMonster
             }
         }
         static bool _unlocked = false;
+
+
+        /// <summary>
+        /// Special Unlock check for Premium features.
+        /// Premium features will work 2 out of 3 time;
+        /// </summary>
+        public static bool UnlockedPremium {
+            get
+            {
+                if (Unlocked)
+                    return true;
+
+                return DateTime.Now.Ticks % 2 != 0;
+            }
+        }
 
         /// <summary>
         /// Determines whether the app is running the Pro Version
@@ -136,10 +154,13 @@ namespace MarkdownMonster
         static RegisterDialog regDialog;
 
         public static void Startup()
-        {
+        {            
+            if (regDialog != null)
+                return; // already up
+
             if (!Unlocked && mmApp.Configuration.ApplicationUpdates.AccessCount > 50)
-            {
-                timer = new System.Timers.Timer(12 * 1000 * 60);
+            {               
+                timer = new System.Timers.Timer(25 * 1000 * 60); // 25 minutes
                 timer.Elapsed += (s, ev) =>
                 {
                     mmApp.Model?.Window?.Dispatcher?.Invoke(() =>
@@ -148,12 +169,16 @@ namespace MarkdownMonster
                         {
                             if (regDialog != null && regDialog.IsVisible)
                                 return;
-
+                            
                             regDialog = new RegisterDialog
                             {
                                 Owner = mmApp.Model.Window
                             };
                             regDialog.ShowDialog();
+                            regDialog = null;
+
+                            timer.Stop();
+                            timer.Start();
                         }
                         catch { }
                     });
@@ -165,8 +190,7 @@ namespace MarkdownMonster
         public static void Shutdown()
         {
             timer?.Stop();
-            timer?.Dispose();
-            timer = null;
+            timer?.Dispose();            
 
             try
             {
@@ -174,6 +198,58 @@ namespace MarkdownMonster
             }
             catch { }
             regDialog = null;
+        }
+
+        /// <summary>
+        /// Displays the Premium Feature dialog and returns the number of the button 0-n
+        /// that was pressed. 1 if the close box was used (same as Cancel or ButtonCancel)
+        /// </summary>
+        /// <param name="premiumFeatureName">Name of the feature displayed in the dialog</param>
+        /// <param name="premiumFeatureLink">Optional doc link - if provided a button for Feature Info is shown</param>
+        /// <returns></returns>
+        public static int ShowPremiumDialog(string premiumFeatureName, string premiumFeatureLink = null)
+        {
+            var form = new BrowserMessageBox();
+            form.Owner = mmApp.Model?.Window;
+            form.Title = "Premium Feature not available";
+            form.Width = 550;
+            form.Height = 370;
+            form.SetMessage(string.Empty);
+
+            string md = $@"<h3 style=""color: steelblue"">{premiumFeatureName} is a Premium Feature</h3>
+
+This premium feature is only available in the registered version
+of Markdown Monster. If you would like to use **{premiumFeatureName}** in Markdown Monster,
+you can purchase a licensed copy of the software on our Web site.
+
+<small style=""color: #888"">
+Note: premium features are randomly disabled in the free edition
+</small>
+";
+
+
+            form.ShowMarkdown(md);
+            form.Icon = mmApp.Model.Window.Icon;
+            form.ButtonOkText.Text = "Buy a License";
+            form.ButtonCancelText.Text = "Continue Unlicensed";
+
+            Button featureButton = null;
+            if (!string.IsNullOrEmpty(premiumFeatureLink))
+            {
+                featureButton = form.AddButton("Feature Info", FontAwesomeIcon.InfoCircle, Brushes.SteelBlue);
+            }
+
+            var result = form.ShowDialog();
+
+            if (form.ButtonResult == form.ButtonOk)
+                ShellUtils.GoUrl("https://markdownmonster.west-wind.com/purchase.aspx");
+            else if (form.ButtonResult == featureButton)
+                ShellUtils.GoUrl(premiumFeatureLink);
+
+            if (form.ButtonResult == null)
+                return 1;
+
+            return form.PanelButtonContainer.Children.IndexOf(form.ButtonResult);
         }
     }
 

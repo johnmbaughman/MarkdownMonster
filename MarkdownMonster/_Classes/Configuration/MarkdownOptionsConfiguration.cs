@@ -1,4 +1,5 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using MarkdownMonster.Annotations;
 
@@ -52,6 +53,7 @@ namespace MarkdownMonster
         /// https://github.com/lunet-io/markdig/blob/master/src/Markdig.Tests/Specs/ListExtraSpecs.md
         /// </summary>
         public bool ListExtras { get; set; } = true;
+        
 
         /// <summary>
         /// If true expand Emoji in the format of :smile: and common Smileys  like :-)
@@ -80,6 +82,16 @@ namespace MarkdownMonster
 
 
         /// <summary>
+        /// Allows displaying mathematic formulas
+        /// https://github.com/lunet-io/markdig/blob/master/src/Markdig.Tests/Specs/MathSpecs.md
+        ///
+        /// <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+        /// <script type="text/javascript" src="http://code.jquery.com/jquery-1.8.0.min.js"></script>
+        /// <script type="text/javascript" src="http://js2math.github.com/JsMath/jsmath.tablet.js"></script>
+        /// </summary>
+        public bool UseMathematics { get; set; }
+
+        /// <summary>
         /// Use Abbreviations which are linked to definitions
         /// </summary>
         /// https://github.com/lunet-io/markdig/blob/master/src/Markdig.Tests/Specs/AbbreviationSpecs.md
@@ -92,10 +104,10 @@ namespace MarkdownMonster
         public bool CustomContainers { get; set; } = true;
 
         /// <summary>
-        /// Allows for attribute syntax
+        /// Allows for attribute syntax `{#id .class [color:red]}`
         /// https://github.com/lunet-io/markdig/blob/master/src/Markdig.Tests/Specs/GenericAttributesSpecs.md
         /// </summary>
-        public bool Attributes { get; set; } = true;
+        public bool GenericAttributes { get; set; } = false;
 
 
         /// <summary>
@@ -105,12 +117,7 @@ namespace MarkdownMonster
         /// </summary>
         public bool SmartyPants { get; set; }
 
-        /// <summary>
-        /// Renders Mermaid and Nonoml markup 
-        /// https://github.com/lunet-io/markdig/blob/master/src/Markdig.Tests/Specs/DiagramsSpecs.md
-        /// </summary>
-        public bool Diagrams { get; set; }
-
+      
         /// <summary>
         /// If true inline HTML blocks are not rendered        
         /// </summary>
@@ -120,6 +127,7 @@ namespace MarkdownMonster
         /// Renders all links as external links with `target='top'`
         /// </summary>
         public bool RenderLinksAsExternal { get; set; }
+
 
         /// <summary>
         /// Gets or sets the Markdig extensions to be enabled.
@@ -214,6 +222,27 @@ namespace MarkdownMonster
 
 
         private string _markdownParserName;
+        private bool _markdownLinting;
+
+
+        /// <summary>
+        /// Determines whether the Markdown Linting window is visible.
+        /// </summary>
+        public bool MarkdownLinting
+        {
+            get => _markdownLinting;
+            set
+            {
+                if (value == _markdownLinting) return;
+                _markdownLinting = value;
+                OnPropertyChanged();
+            }
+        }
+
+
+
+        public MarkdownSymbols MarkdownSymbols { get; set; } = new MarkdownSymbols();
+        
 
         #endregion
 
@@ -224,5 +253,16 @@ namespace MarkdownMonster
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+    }
+
+
+    /// <summary>
+    /// Markdown Symbols to use for certain extensions
+    /// </summary>
+    public class MarkdownSymbols
+    {
+        public string Italic { get; set; } = "*";   // "_"
+        public string SoftReturn { get; set; } = "  ";  // "\\"
+
     }
 }

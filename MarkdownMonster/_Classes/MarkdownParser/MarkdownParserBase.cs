@@ -21,30 +21,6 @@ namespace MarkdownMonster
         /// <returns></returns>
         public abstract string Parse(string markdown);
         
-        /// <summary>
-        /// Parses strikeout text ~~text~~. Single line (to linebreak) allowed only.
-        /// </summary>
-        /// <param name="html"></param>
-        /// <returns></returns>
-        protected string ParseStrikeout(string html)
-        {
-            if (html == null)
-                return null;
-
-            var matches = strikeOutRegex.Matches(html);
-            foreach (Match match in matches)
-            {
-                string val = match.Value;
-
-                if (match.Value.Contains('\n'))
-                    continue;
-
-                val = "<del>" + val.Substring(2, val.Length - 4) + "</del>";
-                html = html.Replace(match.Value, val);
-            }
-
-            return html;
-        }
 
         /// <summary>
         /// Strips 
@@ -62,23 +38,11 @@ namespace MarkdownMonster
                 markdown = markdown.Replace(extractedYaml, "");
 
             return markdown;
-        }
-
-        /// <summary>
-        /// Parses out script tags that might not be encoded yet
-        /// </summary>
-        /// <param name="html"></param>
-        /// <returns></returns>
-        protected string ParseScript(string html)
-        {
-            html = html.Replace("<script", "&lt;script");
-            html = html.Replace("</script", "&lt;/script");
-            html = html.Replace("javascript:", "javaScript:");
-            return html;
-        }
+        }        
 
 
-        private static Regex fontAwesomeIconRegEx = new Regex(@"@icon-.*?[\s|\.|\,|\<]");
+        
+        protected static Regex fontAwesomeIconRegEx = new Regex(@"@icon-.*?[\s|\.|\,|\<]");
 
         /// <summary>
         /// Post processing routine that post-processes the HTML and 

@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
+﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 using MarkdownMonster.Annotations;
 
 namespace MarkdownMonster.Configuration
@@ -18,7 +13,8 @@ namespace MarkdownMonster.Configuration
         {
             Font = "Consolas";
             FontSize = 17;
-            LineHeight = 1.3M;
+            LineHeight = 1.45M;
+            PreviewHighlightTimeout = 1800;  // 0 means it stays highlighted
 
             WrapText = true;
             HighlightActiveLine = true;
@@ -28,6 +24,7 @@ namespace MarkdownMonster.Configuration
             KeyboardHandler = "default";  // vim,emacs
         }
 
+        #region Font, Sizing and Padding
         /// <summary>
         /// The font used in the editor. Must be a proportional font
         /// </summary>
@@ -46,12 +43,33 @@ namespace MarkdownMonster.Configuration
 
 
         /// <summary>
-        /// If enabled prefills bullets and auto-numbers. Disabled
-        /// by default because it has some side effects that 
-        /// are not desired by some.
+        ///
         /// </summary>
-        public bool EnableBulletAutoCompletion { get; set; }
+        public bool CenteredMode
+        {
+            get {  return _centeredMode; }
+            set
+            {
+                if (value == _centeredMode) return;
+                _centeredMode = value;
+                if (_centeredMode && CenteredModeMaxWidth == 0)
+                    CenteredModeMaxWidth = 970;
 
+                OnPropertyChanged();
+            }
+        }
+        private bool _centeredMode = true;
+
+        /// <summary>
+        /// If set to a non-zero value will keep the editor's content width to
+        /// this specified size
+        /// </summary>
+        public int CenteredModeMaxWidth { get; set; } = 970;
+
+        /// <summary>
+        /// Horizontal padding for the editor
+        /// </summary>
+        public int Padding { get; set; } = 20;
 
         /// <summary>
         /// Zoom level percentage on top of the EditorFontSize
@@ -69,6 +87,9 @@ namespace MarkdownMonster.Configuration
         }
         private int _zoomLevel = 100;
 
+        #endregion
+
+        #region Options
 
         /// <summary>
         /// Determines whether the active line is highlighted in the editor
@@ -108,22 +129,9 @@ namespace MarkdownMonster.Configuration
         }
         private bool _showInvisibles = false;
 
-        /// <summary>
-        /// Determines whether the editor wraps text or extends lines
-        /// out. Default is false.
-        /// </summary>
-        public bool WrapText
-        {
-            get { return _wrapText; }
-            set
-            {
-                if (value == _wrapText) return;
-                _wrapText = value;
-                OnPropertyChanged(nameof(WrapText));
-            }
-        }
-        private bool _wrapText;
+        #endregion
 
+        #region Spell Checking
         /// <summary>
         /// Determines if spell checking is used. This value maps to the
         /// spell check button in the window header.
@@ -140,21 +148,112 @@ namespace MarkdownMonster.Configuration
         }
         private bool _enableSpellcheck;
 
-
         /// <summary>
         /// Dictionary used by the editor. Defaults to 'en_US'.
         /// Others shipped: de_DE, es_ES, fr_FR
         /// Any OpenOffice style dictionary can be used by copying into
         /// the .\Editor folder providing .dic and .aff files.
         /// </summary>
-        public string Dictionary { get; set; }
+        public string Dictionary
+        {
+            get => _dictionary;
+            set
+            {
+                if (value == _dictionary) return;
+                _dictionary = value;
+                OnPropertyChanged();
+            }
+        }
+        private string _dictionary;
+
+        #endregion
 
 
+        #region Tabs, Print Margin and Wrapping
+        /// <summary>
+        /// If using SoftTabs determines the Tab size
+        /// </summary>
+        public int TabSize { get; set; } = 4;
+
+        /// <summary>
+        /// Determines whether hard tabs or spaces are used for Tabs
+        /// </summary>
+        public bool UseSoftTabs { get; set; } = true;
+
+        /// <summary>
+        /// Determines whether the editor wraps text or extends lines
+        /// out. Default is false.
+        /// </summary>
+        public bool WrapText
+        {
+            get { return _wrapText; }
+            set
+            {
+                if (value == _wrapText) return;
+                _wrapText = value;
+                OnPropertyChanged(nameof(WrapText));
+            }
+        }
+
+        private bool _wrapText;
+
+        public int WrapMargin { get; set; }
+
+        /// <summary>
+        /// Determines whether a print margin is displayed
+        /// </summary>
+        public bool ShowPrintMargin { get; set; }
+
+        /// <summary>
+        /// Size of the print margin if it's displayed
+        /// </summary>
+        public int PrintMargin { get; set; }
+
+        #endregion
+
+        #region Miscellaneous
         /// <summary>
         /// Keyboard input hanlder type:
         /// default (ace/vs), vim, emacs
         /// </summary>
         public string KeyboardHandler { get; set; }
+
+        /// <summary>
+        /// When true causes editor to run in RTL mode otherwise LTR
+        /// </summary>
+        public bool RightToLeft
+        {
+            get => _rightToLeft;
+            set
+            {
+                if (value == _rightToLeft) return;
+                _rightToLeft = value;
+                OnPropertyChanged();
+            }
+        }
+
+        private bool _rightToLeft;
+
+
+        /// <summary>
+        /// If enabled prefills bullets and auto-numbers. Disabled
+        /// by default because it has some side effects that
+        /// are not desired by some.
+        /// </summary>
+        public bool EnableBulletAutoCompletion { get; set; }
+
+        #endregion
+
+        #region Preview Properties
+
+        /// <summary>
+        /// Setting for the Preview HighlightRefresh timeout
+        /// in milliseconds. Set to 0 to not clear.
+        /// </summary>
+        public int PreviewHighlightTimeout { get; set; }
+        #endregion
+
+
 
 
         #region INotifyPropertyChanged
@@ -169,4 +268,6 @@ namespace MarkdownMonster.Configuration
 
         #endregion
     }
+
+
 }

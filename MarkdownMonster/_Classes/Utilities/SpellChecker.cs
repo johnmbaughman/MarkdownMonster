@@ -1,33 +1,71 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
 using NHunspell;
 using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
 using HtmlAgilityPack;
+using MarkdownMonster.Windows;
 using Westwind.Utilities;
 
 namespace MarkdownMonster.Utilities
 {
     public class SpellChecker
     {
-        
-        public static Hunspell GetSpellChecker(string language = "EN_US", bool reload = false)
+        public static string ExternalDictionaryFolder { get; } = Path.Combine(mmApp.Configuration.CommonFolder, "DownloadedDictionaries");
+
+        public static readonly string InternalDictionaryFolder = Path.Combine(App.InitialStartDirectory, "Editor");
+
+        public static Hunspell GetSpellChecker(string language = "en-US", bool reload = false)
         {
             if (reload || _spellChecker == null)
             {
-                string dictFolder = Path.Combine(Environment.CurrentDirectory, "Editor\\");
+                string dic = Path.Combine(InternalDictionaryFolder, language + ".dic");
+                string aff = Path.ChangeExtension(dic, "aff");
 
-                string aff = dictFolder + language + ".aff";
-                string dic = Path.ChangeExtension(aff, "dic");
+                if (!File.Exists(dic))
+                {
+                    if (!Directory.Exists(ExternalDictionaryFolder))
+                        Directory.CreateDirectory(ExternalDictionaryFolder);
+
+                    dic = Path.Combine(ExternalDictionaryFolder, language + ".dic");
+                    aff = Path.ChangeExtension(dic, "aff");
+                    
+                    if (!File.Exists(dic))
+                    {
+                        mmApp.Configuration.Editor.Dictionary = "en-US";
+                        if (mmApp.Model?.Window != null)
+                            mmApp.Model.Window.ShowStatusError($"Dictionary for language {language} not found. Resetting to en-US. Please reinstall your language.");
+
+                        return GetSpellChecker("en-US", true);
+                    }
+                }
 
                 _spellChecker?.Dispose();
-                _spellChecker = new Hunspell(aff, dic);
+                try
+                {
+                    _spellChecker = new Hunspell(aff, dic);
+                }
+                catch
+                {
+                    if (!DownloadDictionary(language))
+                    {
+                        if (language != "en-US")
+                        {
+                            mmApp.Configuration.Editor.Dictionary = "en-US";
+                            return GetSpellChecker("en-US", true);
+                        }
+                        throw new InvalidOperationException("Language not installed. Reverting to US English.");
+                    }
+                }
 
                 // Custom Dictionary if any
-                string custFile = Path.Combine(mmApp.Configuration.CommonFolder, language + "_custom.txt");
+                string custFile = Path.Combine(ExternalDictionaryFolder, language + "_custom.txt");
                 if (File.Exists(custFile))
                 {
                     var lines = File.ReadAllLines(custFile);
@@ -50,9 +88,12 @@ namespace MarkdownMonster.Utilities
         /// <param name="language"></param>
         /// <param name="reload"></param>
         /// <returns></returns>
-        public static bool CheckSpelling(string text, string language = "EN_US", bool reload = false)
+        public static bool CheckSpelling(string text, string language = "en-US", bool reload = false)
         {
             var hun = GetSpellChecker(language, reload);
+            if (hun == null)
+                return false;
+
             return hun.Spell(text);
         }
 
@@ -64,7 +105,7 @@ namespace MarkdownMonster.Utilities
         /// <param name="language"></param>
         /// <param name="reload"></param>
         /// <returns></returns>
-        public static IEnumerable<string> GetSuggestions(string text, string language = "EN_US", bool reload = false)
+        public static IEnumerable<string> GetSuggestions(string text, string language = "en-US", bool reload = false)
         {
             IEnumerable<string> suggestions;
 
@@ -75,7 +116,7 @@ namespace MarkdownMonster.Utilities
             }
             else
                 suggestions = new string[] {};
-            
+
             return suggestions;
         }
 
@@ -84,42 +125,113 @@ namespace MarkdownMonster.Utilities
         /// </summary>
         /// <param name="word"></param>
         /// <param name="lang"></param>
-        public static void AddWordToDictionary(string word, string lang = "EN_US")
+        public static bool AddWordToDictionary(string word, string lang = "en-US")
         {
-            File.AppendAllText(Path.Combine(mmApp.Configuration.CommonFolder + "\\", lang + "_custom.txt"), word + "\r\n");
-            _spellChecker.Add(word);
+            try
+            {
+                if (!Directory.Exists(ExternalDictionaryFolder))
+                    Directory.CreateDirectory(ExternalDictionaryFolder);
+
+                var dictPath = Path.Combine(ExternalDictionaryFolder, lang + "_custom.txt");
+                File.AppendAllText(dictPath, word + "\r\n");
+                _spellChecker.Add(word);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                mmApp.LogLocal($"Add to Dictionary failed: {ex.Message}");
+            }
+
+            return false;
         }
-        
+
         const string DictionaryDownloadUrl = "https://raw.githubusercontent.com/wooorm/dictionaries/master/dictionaries/{0}/index.dic";
 
         /// <summary>
         /// Downloads a dictionary file for a given language
         /// </summary>
         /// <param name="language">en-GB, it-IT, ko-KO</param>
+        /// <param name="basePath">The path that dictionaries are downloaded to</param>
         /// <returns></returns>
         public static bool DownloadDictionary(string language, string basePath = null)
         {
             if (basePath == null)
-                basePath = App.InitialStartDirectory;
-            
+                basePath = ExternalDictionaryFolder;
+
             try
             {
-                var diItem = DictionaryDownloads.FirstOrDefault(di => language.Equals(di.Code, StringComparison.InvariantCultureIgnoreCase));
+                var diItem = DictionaryDownloads.FirstOrDefault(di =>
+                    language.Equals(di.Code, StringComparison.InvariantCultureIgnoreCase));
                 if (diItem != null)
                 {
-                    var url = string.Format(DictionaryDownloadUrl,diItem.Code);
-                    var dicFile = Path.Combine(basePath, "Editor", language + ".dic");
+                    string url = null;
+                    if (!string.IsNullOrEmpty(diItem.CustomDownloadUrlForDic))
+                        url = diItem.CustomDownloadUrlForDic;
+                    else
+                        url = string.Format(DictionaryDownloadUrl, diItem.Code);
+
+                    if (!Directory.Exists(basePath))
+                        Directory.CreateDirectory(basePath);
+
+                    var dicFile = Path.Combine(basePath, language + ".dic");
                     var web = new WebClient();
                     web.DownloadFile(new Uri(url), dicFile);
+
                     var affFile = dicFile.Replace(".dic", ".aff");
+                    url = url.Replace(".dic", ".aff");
                     web.DownloadFile(new Uri(url), affFile);
 
                     return File.Exists(dicFile) && File.Exists(affFile);
                 }
             }
-            catch { }
+            catch(Exception ex)
+            {
+                mmApp.Log("Failed to download dictionary", ex, false, LogLevels.Warning);
+            }
 
             return false;
+        }
+
+        public static bool AskForLicenseAcceptance(string language)
+        {
+            var form = new BrowserMessageBox()
+            {
+                Owner = mmApp.Model.Window
+            };
+
+            mmApp.Model.Window.ShowStatusProgress($"Downloading dictionary license for {language}");
+
+            //download license
+            var wc = new WebClient();
+            wc.Encoding = Encoding.UTF8;
+
+            var url = $"https://raw.githubusercontent.com/wooorm/dictionaries/master/dictionaries/{language}/license";
+            var dd = DictionaryDownloads.FirstOrDefault(dx => dx.Code == language);
+            if (!string.IsNullOrEmpty(dd?.CustomDownloadUrlForLicense))
+                url = dd.CustomDownloadUrlForLicense;
+
+            string md;
+            try
+            {
+                md = wc.DownloadString(url);
+            }
+            catch
+            {
+                return false;
+            }
+
+            mmApp.Model.Window.ShowStatusSuccess($"Downloaded license for {language}");
+
+            if (string.IsNullOrEmpty(md))
+                return false;
+
+            form.ShowMarkdown(md);
+            form.Icon = mmApp.Model.Window.Icon;
+            form.ButtonOkText.Text = "Accept";
+            form.SetMessage("Please accept the license for the dictionary:");
+            form.ShowDialog();
+
+            return form.ButtonResult == form.ButtonOk;
         }
 
 
@@ -158,25 +270,28 @@ namespace MarkdownMonster.Utilities
             {
                 Name = "English (US)",
                 Code = "en-US",
-                PreInstalled = true
+                PreInstalled = true,
+
             },
             new DictionaryLanguage
             {
                 Name = "German",
                 Code = "de",
-                PreInstalled = true
+                PreInstalled = true,
+
             },
             new DictionaryLanguage
             {
                 Name = "French",
                 Code = "fr",
-                PreInstalled = true
+                PreInstalled = true,
+
             },
             new DictionaryLanguage
             {
                 Name = "Spanish",
                 Code = "es",
-                PreInstalled = true
+                PreInstalled = true,
             },
             new DictionaryLanguage
             {
@@ -473,7 +588,15 @@ namespace MarkdownMonster.Utilities
                 Name = "Vietnamese",
                 Code = "vi"
             },
+            new DictionaryLanguage
+            {
+                Name = "Indian - Hindi",
+                Code = "HI_in",
+                CustomDownloadUrlForDic = "https://github.com/Shreeshrii/hindi-hunspell/raw/master/Hindi/hi_IN.dic",
+                CustomDownloadUrlForLicense = "https://raw.githubusercontent.com/Shreeshrii/hindi-hunspell/master/Hindi/LICENSES-hi.txt"
+            }
         };
+
     }
 
     public class DictionaryLanguage
@@ -482,6 +605,11 @@ namespace MarkdownMonster.Utilities
         public string Code { get; set; }
         public string Url { get; set; }
         public bool PreInstalled { get; set; }
+        public int SortOrder { get; set; }
+
+        public string CustomDownloadUrlForLicense { get; set; }
+        public string CustomDownloadUrlForDic { get; set; }
+        public string CustomDownloadUrlForZip { get; set; }
     }
 
 

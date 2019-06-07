@@ -35,6 +35,7 @@ using System;
 using System.IO;
 using System.Text.RegularExpressions;
 using Markdig;
+using Markdig.Extensions.Mathematics;
 using Markdig.Extensions.Tables;
 using Markdig.Renderers;
 using Westwind.Utilities;
@@ -83,7 +84,7 @@ namespace MarkdownMonster
                 html = ParseExternalLinks(html);
 
             if (!mmApp.Configuration.MarkdownOptions.AllowRenderScriptTags)
-                html = ParseScript(html);
+                html = HtmlUtils.SanitizeHtml(html);
 
             return html;
         }
@@ -102,6 +103,8 @@ namespace MarkdownMonster
         protected virtual MarkdownPipelineBuilder BuildPipeline(MarkdownOptionsConfiguration options, MarkdownPipelineBuilder builder)
         {
             
+            if(options.UseMathematics)
+                builder = builder.UseMathematics();                
 
             if (options.AutoLinks)
                 builder = builder.UseAutoLinks();
@@ -122,19 +125,25 @@ namespace MarkdownMonster
             if (options.MediaLinks)
                 builder = builder.UseMediaLinks();
             if (options.ListExtras)
-                builder = builder.UseListExtras();
+                builder = builder
+                            .UseListExtras()
+                            .UseDefinitionLists();
+
             if (options.Figures)
                 builder = builder.UseFigures();
             if (options.GithubTaskLists)
                 builder = builder.UseTaskLists();
             if (options.SmartyPants)
                 builder = builder.UseSmartyPants();
-            if(options.Diagrams)
-                builder = builder.UseDiagrams();
+
+
+            
             if (options.CustomContainers)
                 builder = builder.UseCustomContainers();
-            if (options.Attributes)
+
+            if (options.GenericAttributes)
                 builder = builder.UseGenericAttributes();
+            
             if (options.FootersAndFootnotes)
                 builder = builder                    
                     .UseFooters()
@@ -158,7 +167,7 @@ namespace MarkdownMonster
             {
                 // One or more of the extension options is invalid. 
                 mmApp.Log("Failed to load Markdig extensions: " + options.MarkdigExtensions + "\r\n" + ex.Message, ex);
-
+                mmApp.Model.Window.ShowStatusError("Failed to load Markdig extensions: " + ex.Message);
                 // reset to default
                 options.MarkdigExtensions = string.Empty;
                 builder = builder.Configure(options.MarkdigExtensions.Replace(",", "+"));                
@@ -173,7 +182,7 @@ namespace MarkdownMonster
         /// ready to process builder.
         /// </summary>
         /// <returns></returns>
-        protected virtual MarkdownPipelineBuilder CreatePipelineBuilder()
+        public  virtual MarkdownPipelineBuilder CreatePipelineBuilder()
         {
             var options = mmApp.Configuration.MarkdownOptions;
             var builder = new MarkdownPipelineBuilder();

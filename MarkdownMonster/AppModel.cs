@@ -1,15 +1,15 @@
 ﻿#region License
 /*
  **************************************************************
- *  Author: Rick Strahl 
+ *  Author: Rick Strahl
  *          © West Wind Technologies, 2016
  *          http://www.west-wind.com/
- * 
+ *
  * Created: 04/28/2016
  *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
  * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -18,7 +18,7 @@
  * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
- **************************************************************  
+ **************************************************************
 */
 #endregion
 
@@ -28,6 +28,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using FontAwesome.WPF;
 using MarkdownMonster.AddIns;
@@ -38,16 +39,15 @@ using Westwind.Utilities;
 namespace MarkdownMonster
 {
     /// <summary>
-    /// Global App model for the application. Holds references to 
+    /// Global App model for the application. Holds references to
     /// top level components like the Window, configuration and more
     /// as well as includes a number of helper functions.
-    /// 
+    ///
     /// Available to Addins as `this.Model`.
     /// </summary>
     public class AppModel : INotifyPropertyChanged
     {
 
-        #region Top Level Model Properties
 
         /// <summary>
         /// An instance of the main application WPF form
@@ -59,20 +59,55 @@ namespace MarkdownMonster
         /// </summary>
         public ApplicationConfiguration Configuration { get; set; }
 
+
+        /// <summary>
+        /// Commands
+        /// </summary>
+        public AppCommands Commands { get; }
+
+        /// <summary>
+        /// Contains Main Window layout settings and functionality
+        /// </summary>
+        public MainWindowLayoutModel WindowLayout { get; internal set; }
+
+
+
+
+        #region Document Open/Active State
+
         /// <summary>
         /// Returns an instance of the Active Editor instance. The editor contains
         /// editor behavior of the browser control as well as all interactions with
         /// the editor's event model and text selection interfaces.
-        /// 
-        /// Contains an `AceEditor` property that references the underlying 
+        ///
+        /// Contains an `AceEditor` property that references the underlying
         /// JavaScript editor wrapper instance.
         /// </summary>
         public MarkdownDocumentEditor ActiveEditor
-        {            
+        {
             get
             {
-                var editor = Window.GetActiveMarkdownEditor();                
+                var editor = Window.GetActiveMarkdownEditor();
                 return editor;
+            }
+        }
+
+
+        /// <summary>
+        /// Returns the active Tab's file name - this can either be
+        /// the name of a Markdown Doducment editor or just a filename
+        /// or URL from a preview tab.
+        /// </summary>
+        public string ActiveTabFilename
+        {
+            get
+            {
+                var editor = Window.GetActiveMarkdownEditor();
+                if (editor != null)                
+                    return editor.MarkdownDocument?.Filename;
+
+                var tab = Window.TabControl.SelectedItem as TabItem;
+                return tab?.ToolTip as string;
             }
         }
 
@@ -84,25 +119,32 @@ namespace MarkdownMonster
             get => _activeDocument;
             set
             {
-                if (value == _activeDocument)
-                    return;
-
+                // DO ON ALL ASSIGNMENTS ALWAYS
                 _activeDocument = value;
 
                 OnPropertyChanged(nameof(ActiveDocument));
-                OnPropertyChanged(nameof(ActiveEditor));                
+                OnPropertyChanged(nameof(ActiveEditor));
                 OnPropertyChanged(nameof(IsEditorActive));
                 OnPropertyChanged(nameof(IsTabOpen));
                 OnPropertyChanged(nameof(IsNoTabOpen));
+            }
+        }
+        private MarkdownDocument _activeDocument;
 
-                Window.ToolbarEdit.IsEnabled = IsEditorActive;
+
+        public MarkdownMonsterProject ActiveProject
+        {
+            get => _activeProject;
+            set
+            {
+                if (Equals(value, _activeProject))
+                    return;
+                _activeProject = value;
+                OnPropertyChanged();
             }
         }
 
-        public MainWindowLayoutModel WindowLayout { get; internal set; }
-
-        private MarkdownDocument _activeDocument;
-
+        private MarkdownMonsterProject _activeProject = new MarkdownMonsterProject();
 
         /// <summary>
         /// Gives a list of all the open documents as Markdown document instances
@@ -114,13 +156,34 @@ namespace MarkdownMonster
             {
                 if (Equals(value, _openDocuments)) return;
                 _openDocuments = value;
-                OnPropertyChanged(nameof(OpenDocuments));              
+                OnPropertyChanged(nameof(OpenDocuments));
             }
         }
 
         private List<MarkdownDocument> _openDocuments;
 
-        
+        /// <summary>
+        /// Returns a list of open editor instances inside of open tabs
+        /// </summary>
+        public List<MarkdownDocumentEditor> OpenEditors
+        {
+            get
+            {
+                var list  = new List<MarkdownDocumentEditor>();
+                if (Window.TabControl.Items.Count < 1)
+                    return list;
+
+                foreach (System.Windows.Controls.TabItem tab in Window.TabControl.Items)
+                {
+                    var editor = tab.Tag as MarkdownDocumentEditor;
+                    if (editor != null)
+                        list.Add(editor);
+                }
+                return list;
+            }
+        }
+
+
         /// <summary>
         /// Determines whether there are open tabs
         /// </summary>
@@ -135,10 +198,40 @@ namespace MarkdownMonster
         {
             get
             {
-                return Window.TabControl.Items.Count < 1;                           
+                return Window.TabControl.Items.Count < 1;
             }
         }
-        
+
+
+        /// <summary>
+        /// Determines if there's a document loaded
+        /// </summary>
+        public bool IsEditorActive
+        {
+            get
+            {
+                if (ActiveEditor != null && ActiveDocument != null)
+                    return true;
+
+                return false;
+            }
+        }
+
+
+        /// <summary>
+        /// Determines whether the editor currently has focus
+        /// </summary>
+        public bool IsEditorFocused
+        {
+            get => _isEditorFocused;
+            set
+            {
+  			    if (Equals(value, _openDocuments)) return;
+                _isEditorFocused = value;
+                OnPropertyChanged(nameof(IsEditorFocused));
+            }
+        }
+        private bool _isEditorFocused;
 
         #endregion
 
@@ -171,12 +264,12 @@ namespace MarkdownMonster
                     Configuration.PreviewMode = PreviewModes.ExternalPreviewWindow;
                 else
                 {
-                    Configuration.PreviewMode = PreviewModes.InternalPreview;                    
+                    Configuration.PreviewMode = PreviewModes.InternalPreview;
                 }
                 OnPropertyChanged(nameof(IsExternalPreview));
-                OnPropertyChanged(nameof(IsInternalPreview));                                
+                OnPropertyChanged(nameof(IsInternalPreview));
             }
-        }        
+        }
 
 
         /// <summary>
@@ -189,13 +282,13 @@ namespace MarkdownMonster
             {
                 if (value)
                     Configuration.PreviewMode = PreviewModes.InternalPreview;
-                else                
+                else
                     Configuration.PreviewMode = PreviewModes.ExternalPreviewWindow;
 
                 OnPropertyChanged(nameof(IsInternalPreview));
-                OnPropertyChanged(nameof(IsExternalPreview));                
+                OnPropertyChanged(nameof(IsExternalPreview));
             }
-        }        
+        }
 
 
 
@@ -217,7 +310,7 @@ namespace MarkdownMonster
         {
             get => _isPresentationMode;
             set
-            {                
+            {
                 if (_isPresentationMode == value) return;
                 _isPresentationMode = value;
                 OnPropertyChanged(nameof(IsPresentationMode));
@@ -228,31 +321,27 @@ namespace MarkdownMonster
 
 
         /// <summary>
-        /// Determines if there's a document loaded 
+        /// Determines whether the application is compiled in Debug Mode
+        /// Provided here mainly as an aid for turning on and off debugging menu
+        /// and UI options.
         /// </summary>
-        public bool IsEditorActive
+        public bool IsDebugMode
         {
             get
             {
-                if (ActiveDocument != null)
-                    return true;
-
+#if DEBUG
+                return true;
+#else
                 return false;
+#endif
             }
         }
 
 
-      
-
-        /// <summary>
-        /// Commands
-        /// </summary>
-        public AppCommands Commands { get; } 
-
         #endregion
 
 
-        #region Statusbar Item Props
+#region Statusbar Item Props
 
         /// <summary>
         /// A list of PreviewThemes as retrieved based on the folder structure of hte
@@ -265,7 +354,7 @@ namespace MarkdownMonster
                 if (_previewThemeNames == null || _previewThemeNames.Count < 1)
                 {
                     var directories =
-                        Directory.GetDirectories(Path.Combine(Environment.CurrentDirectory, "PreviewThemes"));
+                        Directory.GetDirectories(Path.Combine(App.InitialStartDirectory, "PreviewThemes"));
                     foreach (string dir in directories.OrderBy(d => d))
                     {
                         var dirName = Path.GetFileName(dir);
@@ -334,7 +423,7 @@ namespace MarkdownMonster
             {
                 if (_editorThemeNames == null || _editorThemeNames.Count < 1)
                 {
-                    var files = Directory.GetFiles(Path.Combine(Environment.CurrentDirectory, "Editor\\Scripts\\Ace"),
+                    var files = Directory.GetFiles(Path.Combine(App.InitialStartDirectory, "Editor\\Scripts\\Ace"),
                         "theme-*.js");
                     foreach (string file in files.OrderBy(d => d))
                     {
@@ -382,8 +471,8 @@ namespace MarkdownMonster
                 return _documentTypes;
             }
         }
-
         List<string> _documentTypes = null;
+
 
         /// <summary>
         /// Returns the width of the column containing
@@ -400,29 +489,29 @@ namespace MarkdownMonster
             }
         }
 
-        #endregion
+#endregion
 
-        #region Initialization
+#region Initialization
 
         public AppModel(MainWindow window)
         {
-            
+
             Configuration = mmApp.Configuration;
             _openDocuments = new List<MarkdownDocument>();
             Window = window;
 
             Commands = new AppCommands(this);
             mmApp.Model = this;
-            
+
 
         }
 
-        #endregion
+#endregion
 
 
-       
 
-        #region INotifyPropertyChanged
+
+#region INotifyPropertyChanged
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -432,7 +521,7 @@ namespace MarkdownMonster
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
-        #endregion
+#endregion
 
     }
 
@@ -444,5 +533,5 @@ namespace MarkdownMonster
         public string IconString { get; set; }
     }
 
-    
+
 }

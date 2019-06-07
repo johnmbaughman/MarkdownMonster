@@ -1,22 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Data;
-using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Windows;
-using System.Windows.Forms;
 using System.Windows.Input;
 using MahApps.Metro.Controls;
 using MarkdownMonster.Annotations;
-using Microsoft.Win32;
-using Westwind.Utilities;
-using Binding = System.Windows.Data.Binding;
 using Clipboard = System.Windows.Clipboard;
 using Control = System.Windows.Controls.Control;
-using MessageBox = System.Windows.MessageBox;
 using TextBox = System.Windows.Controls.TextBox;
 
 namespace MarkdownMonster.Windows
@@ -205,39 +197,74 @@ namespace MarkdownMonster.Windows
             {
                 CreateTableFromClipboardHtml();
             }
+            else if (sender == ButtonImportCsv)
+            {
+                var form = new TableEditorCsvImport();
+                form.Owner = this;
+                form.ShowDialog();
+
+                if (form.IsCancelled)
+                    return;
+                
+                var parser = new TableParser();
+
+                bool deleteCsvFile = false;
+                string csvFile = form.CsvFilename;
+
+                if (form.ImportFromClipboard)
+                {
+                    string csvText = Clipboard.GetText();
+                    csvFile = Path.GetTempFileName();
+                    csvFile = Path.ChangeExtension(csvFile, "csv");
+                    File.WriteAllText(csvFile,csvText);
+                    deleteCsvFile = true;
+                }
 
 
+                var data = parser.ParseCsvFileToData(csvFile, form.CsvSeparator);
+                    if (data == null || data.Count < 1)
+                    {
+                        AppModel.Window.ShowStatusError($"Couldn\'t open file {csvFile} or the file is empty.");
+                        return;
+                    }
+
+                    TableData = data;                    
+                    DataGridTableEditor.TableSource = TableData;
+
+                if (deleteCsvFile)
+                    File.Delete(csvFile);
+            }
 
             var focusedTextBox = FocusManager.GetFocusedElement(this) as TextBox;
             if (focusedTextBox == null)
                 return;
 
-            if (sender == ButtonInsertColumnRight || "MenuInsertColumnRight" == name)
+            if ("MenuInsertColumnRight" == name)
             {
                 var pos = focusedTextBox.Tag as TablePosition;
                 DataGridTableEditor.AddColumn(pos.Row, pos.Column, ColumnInsertLocation.Right);
             }
-            else if (sender == ButtonInsertColumnLeft || "MenuInsertColumnLeft" == name)
+            else if ("MenuInsertColumnLeft" == name)
             {
                 var pos = focusedTextBox.Tag as TablePosition;
                 DataGridTableEditor.AddColumn(pos.Row, pos.Column, ColumnInsertLocation.Left);
             }
-            else if (sender == ButtonDeleteColumn || "MenuDeleteColumn" == name)
+            else if ("MenuDeleteColumn" == name)
             {
                 var pos = focusedTextBox.Tag as TablePosition;
                 DataGridTableEditor.DeleteColumn(pos.Row, pos.Column);
             }
-            else if (sender == ButtonInsertRowBelow || "MenuInsertRowBelow" == name)
+            else if ("MenuInsertRowBelow" == name)
             {
                 var pos = focusedTextBox.Tag as TablePosition;
                 DataGridTableEditor.AddRow(pos.Row, pos.Column, RowInsertLocation.Below);
             }
-            else if (sender == ButtonInsertRowAbove || "MenuInsertRowAbove" == name)
+            else if ("MenuInsertRowAbove" == name)
             {
                 var pos = focusedTextBox.Tag as TablePosition;
                 DataGridTableEditor.AddRow(pos.Row, pos.Column, RowInsertLocation.Above);
             }
-            else if (sender == ButtonDeleteRow || "MenuDeleteRow" == name)
+            else if ("MenuDeleteRow" == name)
             {
                 var pos = focusedTextBox.Tag as TablePosition;
                 DataGridTableEditor.DeleteRow(pos.Row, pos.Column);

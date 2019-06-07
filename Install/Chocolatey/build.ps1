@@ -1,4 +1,4 @@
-# Script builds a Chocolatey Package and tests it locally
+    # Script builds a Chocolatey Package and tests it locally
 # 
 #  Assumes: Uses latest release out of Pre-release folder
 #           Release has been checked in to GitHub Repo
@@ -6,7 +6,8 @@
 
 cd "$PSScriptRoot" 
 
-$releasePath = "C:\projects2010\MarkdownMonsterAddins\MarkdownMonsterReleases\v1.10"
+$release="v1.16"
+$releasePath = "C:\projects2010\MarkdownMonsterAddins\MarkdownMonsterReleases\$release"
 
 #$file = "MarkdownMonsterSetup-0.55.exe"
 $file = gci "$releasePath" | sort LastWriteTime | select -last 1 | select -ExpandProperty "Name"
@@ -19,7 +20,7 @@ write-host $sha
 $filetext = @"
 `$packageName = 'markdownmonster'
 `$fileType = 'exe'
-`$url = 'https://github.com/RickStrahl/MarkdownMonsterReleases/raw/master/v1.10/$file'
+`$url = 'https://github.com/RickStrahl/MarkdownMonsterReleases/raw/master/$release/$file'
 
 `$silentArgs = '/VERYSILENT'
 `$validExitCodes = @(0)
@@ -32,7 +33,7 @@ out-file -filepath .\tools\chocolateyinstall.ps1 -inputobject $filetext
 del *.nupkg
 
 # Create .nupkg from .nuspec
-choco pack
+choco pack "MarkdownMonster.nuspec"
 
 choco uninstall "MarkdownMonster" -f
 

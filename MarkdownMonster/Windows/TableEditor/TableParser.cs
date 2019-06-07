@@ -3,13 +3,18 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Data;
+using System.Data.Common;
+using System.Data.SqlClient;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using HtmlAgilityPack;
+using LumenWorks.Framework.IO.Csv;
 using MarkdownMonster.Annotations;
 using Westwind.Utilities;
 
@@ -43,7 +48,7 @@ namespace MarkdownMonster.Windows
         }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="tableData"></param>
         /// <returns></returns>
@@ -105,7 +110,7 @@ namespace MarkdownMonster.Windows
 
                     var col = row[i];
                     col.Text = col.Text.Replace("\n", "<br>").Replace("\r", "");
-                    
+
                     var colInfo = columnInfo[i];
                     line += col.Text.PadRight(colInfo.MaxWidth) + " | ";
                 }
@@ -117,7 +122,7 @@ namespace MarkdownMonster.Windows
         }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="tableData"></param>
         /// <returns></returns>
@@ -238,7 +243,7 @@ namespace MarkdownMonster.Windows
             for (int i = 0; i < columnInfo.Count; i++)
             {
                 var colInfo = columnInfo[i];
-                sb.AppendLine($"\t\t<th>{HtmlUtils.HtmlEncode(colInfo.Title.Trim())}</th>");
+                sb.AppendLine($"\t\t<th>{WebUtility.HtmlEncode(colInfo.Title.Trim())}</th>");
             }
 
             sb.AppendLine("\t</tr>");
@@ -252,7 +257,7 @@ namespace MarkdownMonster.Windows
                 {
                     var col = row[i];
                     col.Text = col.Text.Replace("\n", "<br>").Replace("\r", "");
-                    sb.AppendLine($"\t\t<td>{HtmlUtils.HtmlEncode(col.Text.Trim())}</td>");
+                    sb.AppendLine($"\t\t<td>{WebUtility.HtmlEncode(col.Text.Trim())}</td>");
                 }
 
                 sb.AppendLine("\t</tr>");
@@ -281,11 +286,11 @@ namespace MarkdownMonster.Windows
             if (tableMarkdown.IndexOf("<table",StringComparison.InvariantCultureIgnoreCase) > -1 &&
                 tableMarkdown.IndexOf("</table>",StringComparison.InvariantCultureIgnoreCase) > -1)
                 return ParseHtmlToData(tableMarkdown);
-            
+
             return ParseMarkdownPipeTableToData(tableMarkdown);
         }
 
-        
+
         /// <summary>
         /// Parses a Markdown Pipe Table to an Observable Data Collection
         /// </summary>
@@ -327,7 +332,7 @@ namespace MarkdownMonster.Windows
 
                 data.Add(columnData);
             }
-            
+
             return data;
         }
 
@@ -421,7 +426,7 @@ namespace MarkdownMonster.Windows
             var headerRow = doc.DocumentNode.SelectSingleNode("//tr");
             if (headerRow == null)
                 return data;
-      
+
             var headerColumns = new ObservableCollection<CellContent>();
             var headerCols = headerRow.SelectNodes("th");
             if ( headerCols == null)
@@ -433,7 +438,7 @@ namespace MarkdownMonster.Windows
                 headerColumns.Add(new CellContent(node.InnerText));
 
             data.Add(headerColumns);
-            
+
             var nodes = doc.DocumentNode.SelectNodes("//tr");
             foreach (var trNode in nodes.Skip(1))
             {
@@ -455,7 +460,7 @@ namespace MarkdownMonster.Windows
 
                         // convert links and images
                         if (text.Contains("<"))
-                            text = ParseLinkAndImage(text);                                               
+                            text = ParseLinkAndImage(text);
                     }
 
                     rowColumns.Add(new CellContent(text));
@@ -467,23 +472,95 @@ namespace MarkdownMonster.Windows
             return data;
         }
 
+
+        public ObservableCollection<ObservableCollection<CellContent>> ParseCsvFileToData(string filename, string delimiter = ",")
+        {
+            if (string.IsNullOrEmpty(filename) || !File.Exists(filename))
+                return new ObservableCollection<ObservableCollection<CellContent>>();
+
+            FileStream fs = null;
+            try
+            {
+                fs = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read);
+                return ParseCsvStreamToData(fs,delimiter);
+            }
+            catch
+            {
+                return new ObservableCollection<ObservableCollection<CellContent>>();
+            }
+            finally
+            {
+                fs?.Dispose();
+            }
+        }
+
+        public ObservableCollection<ObservableCollection<CellContent>> ParseCsvStringToData(string csvContent, string delimiter = ",")
+        {
+            if (string.IsNullOrEmpty(csvContent))
+                return new ObservableCollection<ObservableCollection<CellContent>>();
+
+            var bytes = Encoding.UTF8.GetBytes(csvContent);
+            using (var fs = new MemoryStream(bytes, 0, bytes.Length))
+            {
+                return ParseCsvStreamToData(fs, delimiter);
+            }
+        }
+
+
+        public ObservableCollection<ObservableCollection<CellContent>> ParseCsvStreamToData(Stream stream, string delimiter = ",")
+        {
+            if (string.IsNullOrEmpty(delimiter))
+                delimiter = ",";
+            if (delimiter == "\\t")
+                delimiter = "\t";
+
+            char charDelimiter = delimiter[0];
+
+            using (var reader = new StreamReader(stream))
+            {
+                using (var csv = new CachedCsvReader(reader,true, charDelimiter))
+                {
+                    var list = new ObservableCollection<ObservableCollection<CellContent>>();
+
+                    var colCount = csv.Columns.Count;
+                    var columnCollection = new ObservableCollection<CellContent>();
+
+                    if (!csv.ReadNextRecord())
+                        return list;
+
+                    for (var index = 0; index < csv.Columns.Count; index++)
+                    {
+                        Column column = csv.Columns[index];
+                        columnCollection.Add(new CellContent(column.Name) {Column = index});
+                    }
+                    list.Add(columnCollection);
+
+                    // Field headers will automatically be used as column names
+                    while(true) {
+                        columnCollection = new ObservableCollection<CellContent>();
+                        for (int index = 0; index < csv.Columns.Count; index++)
+                        {
+                            var colValue = csv[index];
+                            columnCollection.Add(new CellContent(colValue) { Column = index });
+                        }
+
+                        list.Add(columnCollection);
+
+                        if (!csv.ReadNextRecord())
+                            break;
+                    }
+
+                    return list;
+                }
+            }
+        }
+
+
+
         string ParseLinkAndImage(string html)
         {
             if (!html.Contains("<"))
                 return html;
-
-            // Pipe Tables don't support Markdown Links (but do support images. WTF?)
-            //string href = "x";
-            //while (!string.IsNullOrEmpty(href))
-            //{
-            //    href = StringUtils.ExtractString(html, "<a ", "</a>", returnDelimiters: true);
-            //    if (string.IsNullOrEmpty(href))
-            //        break;
-
-            //    var link = StringUtils.ExtractString(href, "href=\"", "\"");
-            //    var text = StringUtils.ExtractString(href, ">", "</a>");
-            //    html = html.Replace(href, $"[{text}]({link}]");
-            //}
 
             string img = "x";
             while (!string.IsNullOrEmpty(img))
@@ -522,7 +599,8 @@ namespace MarkdownMonster.Windows
                     MaxWidth = header.Length
                 };
 
-                var maxWidth = data.Max(d => d[i].Text.Length);
+                var maxWidth = data.Max(d => d[i]?.Text == null ? 0 :d[i].Text.Length);
+
                 if (maxWidth > colInfo.MaxWidth)
                     colInfo.MaxWidth = maxWidth;
                 if (colInfo.MaxWidth > MaxColumnWidth)

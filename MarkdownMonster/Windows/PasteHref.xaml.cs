@@ -62,6 +62,8 @@ namespace MarkdownMonster.Windows
             }
         }
 
+        public bool IsLinkReference { get; set;  }
+
         public string MarkdownFile { get; set; }
 
         public AppModel AppModel { get; set; } = mmApp.Model;
@@ -78,6 +80,7 @@ namespace MarkdownMonster.Windows
             Activated += PasteHref_Activated;
 
             IsExternal = mmApp.Configuration.LastLinkExternal;
+            IsLinkReference = mmApp.Configuration.UseReferenceLinks;
 
         }
 
@@ -186,6 +189,28 @@ namespace MarkdownMonster.Windows
 
             mmApp.Configuration.LastFolder = System.IO.Path.GetDirectoryName(fd.FileName);
             TextLink.Focus();
+        }
+
+        /// <summary>
+        /// External link and Link Reference are mutually exclusive
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void Checkbox_Handler(object sender, RoutedEventArgs e)
+        {
+            if (sender == CheckExternalLink)
+            {
+                if (CheckExternalLink.IsChecked.Value)
+                    CheckLinkReference.IsChecked = false;
+            }
+            if (sender == CheckLinkReference)
+            {
+                if (CheckLinkReference.IsChecked.Value)
+                {
+                    CheckExternalLink.IsChecked = false;
+                }
+            }
+
         }
     }
 }

@@ -19,11 +19,26 @@ namespace MarkdownMonster.Windows
 
             VersionLabel.Content = "Version " +  mmApp.GetVersionForDisplay();
             VersionDateLabel.Content = mmApp.GetVersionDate();
+
+#if NETFULL
             OsLabel.Content = (Environment.Is64BitProcess ? "64 bit" : "32 bit") + " • " +
-                             ".NET " + ComputerInfo.GetDotnetVersion();
+                             ".NET " + MarkdownMonster.Utilities.mmWindowsUtils.GetDotnetVersion();
+#else
+            OsLabel.Content = (Environment.Is64BitProcess ? "64 bit" : "32 bit") + " • " +
+                       System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+#endif
+
+
+
+            if (App.IsPortableMode)
+                PortableMode.Content = "Portable mode";
 
             if (UnlockKey.IsRegistered())
+            {
                 PanelFreeNotice.Visibility = System.Windows.Visibility.Hidden;
+                LabelRegistered.Visibility = System.Windows.Visibility.Visible;
+            }
+            
 
             if (mmApp.Configuration.ApplicationUpdates.AccessCount > 20)
                 LabelUsingFreeVersion.Text =

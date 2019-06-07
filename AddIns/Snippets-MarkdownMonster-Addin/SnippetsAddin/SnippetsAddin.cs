@@ -2,14 +2,14 @@
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using FontAwesome.WPF;
 using MarkdownMonster;
 using MarkdownMonster.AddIns;
-using Westwind.Utilities;
+using Westwind.Scripting;
 
 namespace SnippetsAddin
 {
@@ -29,8 +29,8 @@ namespace SnippetsAddin
             var menuItem = new AddInMenuItem(this)
             {
                 FontawesomeIcon = FontAwesomeIcon.PencilSquareOutline,
-                Caption = "Snippets Template Expansions",                
-                KeyboardShortcut = SnippetsAddinConfiguration.Current.KeyboardShortcut                
+                Caption = "Snippets Template Expansions",
+                KeyboardShortcut = SnippetsAddinConfiguration.Current.KeyboardShortcut
             };
             try
             {
@@ -42,16 +42,19 @@ namespace SnippetsAddin
             // if you don't want to display config or main menu item clear handler
             //menuItem.ExecuteConfiguration = null;
 
-            // Must add the menu to the collection to display menu and toolbar items            
-            this.MenuItems.Add(menuItem);            
+            // Must add the menu to the collection to display menu and toolbar items
+            this.MenuItems.Add(menuItem);
         }
 
         public override void OnWindowLoaded()
         {
-
-
+            bool requiresCompiler = false;
             foreach (var snippet in SnippetsAddinConfiguration.Current.Snippets)
             {
+                if (!requiresCompiler && snippet.SnippetText.Contains("{{") || snippet.SnippetText.Contains("@"))
+                    requiresCompiler = true;
+
+
                 if (!string.IsNullOrEmpty(snippet.KeyboardShortcut))
                 {
                     var ksc = snippet.KeyboardShortcut.ToLower();
@@ -80,7 +83,7 @@ namespace SnippetsAddin
                         KeyConverter k = new KeyConverter();
                         kb.Key = (Key)k.ConvertFromString(key);
                     }
-                    
+
                     // Whatever command you need to bind to
                     kb.Command = new CommandBase((s, e) => InsertSnippet(snippet),
                                                  (s,e) => Model.IsEditorActive);
@@ -88,12 +91,25 @@ namespace SnippetsAddin
                     Model.Window.InputBindings.Add(kb);
                 }
             }
+
+            if (requiresCompiler)
+            {
+                ScriptRunnerRoslyn.WarmupRoslyn();
+            }
         }
 
         public override void OnExecute(object sender)
         {
             if (snippetsWindow == null || !snippetsWindow.IsLoaded)
             {
+
+                if (!UnlockKey.UnlockedPremium)
+                {
+                    UnlockKey.ShowPremiumDialog("Snippet Template Expansion",
+                        "https://github.com/RickStrahl/Snippets-MarkdownMonster-Addin");
+                    return;
+                }
+
                 snippetsWindow = new SnippetsWindow(this);
 
                 snippetsWindow.Top = Model.Window.Top;
@@ -106,7 +122,7 @@ namespace SnippetsAddin
 
         public override void OnExecuteConfiguration(object sender)
         {
-            Model.Window.OpenTab(Path.Combine(mmApp.Configuration.CommonFolder, "snippetsaddin.json"));         
+            Model.Window.OpenTab(Path.Combine(mmApp.Configuration.CommonFolder, "snippetsaddin.json"));
         }
 
         public override bool OnCanExecute(object sender)
@@ -116,6 +132,8 @@ namespace SnippetsAddin
 
         public override void OnApplicationShutdown()
         {
+            // if Roslyn is running shut it down
+            ScriptRunnerRoslyn.ShutdownRoslyn();
             snippetsWindow?.Close();
         }
 
@@ -171,60 +189,37 @@ namespace SnippetsAddin
             snippetText = snippetText.Replace("~", "");
 
             SetSelection(snippetText);
-            
+
             if (idx > -1)
             {
-                var snipRemain = snippetText.Substring(idx);                               
+                var snipRemain = snippetText.Substring(idx);
                 int move = snipRemain.Replace("\r","").Length;
 
                 // older versions don't have these APIs
                 try
                 {
                     var editor = GetMarkdownEditor();
-                    editor.AceEditor.moveCursorLeft(move);                    
+                    editor.AceEditor.MoveCursorLeft(move);
                 }
                 catch { }
             }
 
         }
-        
+
         public override void OnDocumentUpdated()
         {
-            base.OnDocumentUpdated();
-
             var editor = GetMarkdownEditor();
             string line = editor.GetCurrentLine();
             if (string.IsNullOrEmpty(line))
-                return;            
-            
-            var snippet = SnippetsAddinConfiguration.Current.Snippets.FirstOrDefault(sn => sn.Shortcut != null && line.Trim().EndsWith(sn.Shortcut));
+                return;
+
+            var snippet = SnippetsAddinConfiguration.Current.Snippets
+                                                    .FirstOrDefault(sn => !string.IsNullOrEmpty(sn.Shortcut) && line.Trim().EndsWith(sn.Shortcut));
             if (snippet != null)
-            {                               
+            {
                 editor.FindAndReplaceTextInCurrentLine(snippet.Shortcut, "");
                 InsertSnippet(snippet);
             }
         }
-
-        //public override void OnDocumentUpdated()
-        //{
-        //    base.OnDocumentUpdated();
-
-        //    var editor = GetMarkdownEditor();
-        //    var doc = editor.MarkdownDocument;
-
-        //    if (doc.CurrentText.Contains("ecb"))
-        //    {
-        //        doc.CurrentText = doc.CurrentText.Replace("ecb", "Eeel can Blink!");
-        //        editor.SetMarkdown();
-        //    }
-
-        //////        selectionRange = editor.getSelectionRange();
-
-        //////startLine = selectionRange.start.row;
-        //////endLine = selectionRange.end.row;
-
-        //////content = editor.session.getTextRange(selectionRange);
-
-        //}
     }
 }

@@ -20,24 +20,28 @@ namespace MarkdownMonster.Windows
     /// </summary>
     public partial class FilePasswordDialog 
     {
-        public MarkdownDocument document;
+        public MarkdownDocument Document;
 
         public FilePasswordDialog(MarkdownDocument document, bool decrypt)
         {
-            this.document = document;
+            Document = document;
+
+
             InitializeComponent();
 
             DataContext = this;
             mmApp.SetThemeWindowOverride(this);
 
-            
+
             if (decrypt)
             {
                 ButtonLabel.Text = "Decrypt";
-                Title = "Decrypt file: " + document.FilenamePathWithIndicator;
+                Title = "Decrypt Password Protected File";
+                TextEncryptDecrypt.Text = "Decrypt file:";
             }
-            else
-                Title = "Encrypt file: " + document.FilenamePathWithIndicator;
+
+            TextFilename.Text = System.IO.Path.GetFileName(document.Filename);
+            TextPath.Text = System.IO.Path.GetDirectoryName(document.Filename);
 
             TextPassword.Focus();
         }
@@ -45,9 +49,9 @@ namespace MarkdownMonster.Windows
         private void Button_Click(object sender, RoutedEventArgs e)
         {
             if (TextPassword.SecurePassword.Length == 0)
-                document.Password = null;
+                Document.Password = null;
             else
-                document.Password = TextPassword.SecurePassword;
+                Document.Password = TextPassword.SecurePassword;
 
             DialogResult = true;
             Close();
@@ -55,7 +59,7 @@ namespace MarkdownMonster.Windows
 
         private void ButtonCancel_Click(object sender, RoutedEventArgs e)
         {
-            document.Password = null;
+            Document.Password = null;
             DialogResult = false;
             Close();
         }

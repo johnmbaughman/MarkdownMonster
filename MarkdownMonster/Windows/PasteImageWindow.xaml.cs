@@ -4,21 +4,19 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Net.Cache;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using FontAwesome.WPF;
+using System.Windows.Threading;
 using MahApps.Metro.Controls;
-using MahApps.Metro.Controls.Dialogs;
-using MarkdownMonster;
 using MarkdownMonster.AddIns;
+using MarkdownMonster.Utilities;
 using Microsoft.Win32;
 using Westwind.Utilities;
-using Color = System.Windows.Media.Color;
 
 namespace MarkdownMonster.Windows
 {
@@ -38,7 +36,7 @@ namespace MarkdownMonster.Windows
                 if (value == _image) return;
                 _image = value;
                 OnPropertyChanged(nameof(Image));
-
+                OnPropertyChanged(nameof(IsEditable));
             }
         }
 
@@ -54,6 +52,53 @@ namespace MarkdownMonster.Windows
         }
 
 
+        public int ImageWidth
+        {
+            get { return _ImageWidth; }
+            set
+            {
+                if (value > 10000)
+                    value = 10000;
+
+                if (value == _ImageWidth) return;
+                _ImageWidth = value;
+                OnPropertyChanged(nameof(ImageWidth));
+            }
+        }
+
+        private int _ImageWidth;
+
+
+        public int ImageHeight
+        {
+            get { return _ImageHeight; }
+            set
+            {
+                if (value > 10000)
+                    value = 10000;
+
+                if (value == _ImageHeight) return;
+                _ImageHeight = value;
+                OnPropertyChanged(nameof(ImageHeight));
+            }
+        }
+
+        private int _ImageHeight;
+
+
+        public bool IsImageFixedRatio
+        {
+            get { return _IsImageFixedRatio; }
+            set
+            {
+                if (value == _IsImageFixedRatio) return;
+                _IsImageFixedRatio = value;
+                OnPropertyChanged(nameof(IsImageFixedRatio));
+            }
+        }
+        private bool _IsImageFixedRatio = true;
+
+
 
         public bool PasteAsBase64Content
         {
@@ -65,6 +110,7 @@ namespace MarkdownMonster.Windows
                 OnPropertyChanged(nameof(PasteAsBase64Content));
             }
         }
+
         private bool _PasteAsBase64Content = false;
 
 
@@ -100,14 +146,30 @@ namespace MarkdownMonster.Windows
                 _isMemoryImage = value;
                 OnPropertyChanged(nameof(IsMemoryImage));
                 OnPropertyChanged(nameof(IsFileImage));
+                OnPropertyChanged(nameof(IsPreview));
+                OnPropertyChanged(nameof(IsEditable));
             }
         }
 
         private bool _isMemoryImage;
 
+        public bool IsEditable
+        {
+            get { return !string.IsNullOrEmpty(Image) || IsMemoryImage; } 
+        }
+
+        public bool IsPreview
+        {
+            get { return ImagePreview.Source != null; }
+        }
+
+
+        
         AppModel Model { get; set; }
         MarkdownDocumentEditor Editor { get; set; }
         MarkdownDocument Document { get; set; }
+
+        StatusBarHelper StatusBar { get; }
 
 
         public PasteImageWindow(MainWindow window)
@@ -128,11 +190,16 @@ namespace MarkdownMonster.Windows
             Model = window.Model;
             Editor = Model.ActiveEditor;
             Document = Model.ActiveDocument;
+
+            StatusBar = new StatusBarHelper(StatusText, StatusIcon);
         }
+
 
         private void PasteImage_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             bool isControlKey = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+            var clipText = Clipboard.GetText();
+
             if (isControlKey && e.Key == Key.V && Clipboard.ContainsImage())
                 PasteImageFromClipboard();
             else if (isControlKey && e.Key == Key.C)
@@ -148,10 +215,7 @@ namespace MarkdownMonster.Windows
         private void PasteImage_Loaded(object sender, RoutedEventArgs e)
         {
 
-            PasteCommand = new CommandBase((s, args) =>
-            {
-                MessageBox.Show("PasteCommand");
-            });
+            PasteCommand = new CommandBase((s, args) => { MessageBox.Show("PasteCommand"); });
 
             TextImage.Focus();
             if (string.IsNullOrEmpty(Image) && Clipboard.ContainsImage())
@@ -161,8 +225,10 @@ namespace MarkdownMonster.Windows
             else if (string.IsNullOrEmpty(Image) && Clipboard.ContainsText())
             {
                 string clip = Clipboard.GetText().ToLower();
-                if ((clip.StartsWith("http://") || clip.StartsWith("https://")) &&
-                    (clip.Contains(".png") || clip.Contains("jpg")))
+                if ((clip.StartsWith("http://", StringComparison.InvariantCultureIgnoreCase) ||
+                     clip.StartsWith("https://", StringComparison.InvariantCultureIgnoreCase)) &&
+                    (clip.Contains(".png", StringComparison.InvariantCultureIgnoreCase) ||
+                     clip.Contains("jpg", StringComparison.InvariantCultureIgnoreCase)))
                 {
                     TextImage.Text = clip;
                     SetImagePreview(clip);
@@ -182,7 +248,7 @@ namespace MarkdownMonster.Windows
             string href = TextImage.Text.ToLower();
             if (href.StartsWith("http://") || href.StartsWith("https://"))
             {
-                SetImagePreview(href);
+                SetImagePreview(TextImage.Text);
             }
         }
 
@@ -204,11 +270,14 @@ namespace MarkdownMonster.Windows
                 MessageBox.Show("Unable to convert bitmap source.", "Bitmap conversion error",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
-                    return;
+                return;
             }
 
             using (var bitMap = WindowUtilities.BitmapSourceToBitmap(bitmapSource))
             {
+                if (bitMap == null)
+                    return;
+
                 imagePath = AddinManager.Current.RaiseOnSaveImage(bitMap);
 
                 if (PasteAsBase64Content)
@@ -225,10 +294,17 @@ namespace MarkdownMonster.Windows
                     return;
                 }
 
-
                 string initialFolder = null;
+                string documentFolder = null;
                 if (!string.IsNullOrEmpty(Document.Filename) && Document.Filename != "untitled")
-                    initialFolder = Path.GetDirectoryName(Document.Filename);
+                {
+
+                    documentFolder = Path.GetDirectoryName(Document.Filename);
+                    if (!string.IsNullOrEmpty(Document.LastImageFolder))
+                        initialFolder = Document.LastImageFolder;
+                    else
+                        initialFolder = documentFolder;
+                }
 
                 var sd = new SaveFileDialog
                 {
@@ -251,7 +327,7 @@ namespace MarkdownMonster.Windows
                         var ext = Path.GetExtension(imagePath)?.ToLower();
 
                         if (ext == ".jpg" || ext == ".jpeg")
-                            ImageUtils.SaveJpeg(bitMap, imagePath, mmApp.Configuration.JpegImageCompressionLevel);
+                            mmImageUtils.SaveJpeg(bitMap, imagePath, mmApp.Configuration.Images.JpegImageCompressionLevel);
 
                         else
                         {
@@ -265,11 +341,11 @@ namespace MarkdownMonster.Windows
 
                                 encoder.Frames.Add(BitmapFrame.Create(ImagePreview.Source as BitmapSource));
                                 encoder.Save(fileStream);
-
-                                if (ext == ".png")
-                                    mmFileUtils.OptimizePngImage(sd.FileName, 5); // async
                             }
                         }
+
+                        if (ext == ".png" || ext == ".jpeg" || ext == ".jpg")
+                            mmFileUtils.OptimizeImage(sd.FileName); // async
                     }
                     catch (Exception ex)
                     {
@@ -277,17 +353,21 @@ namespace MarkdownMonster.Windows
                         return;
                     }
 
+
                     string relPath = Path.GetDirectoryName(sd.FileName);
-                    if (initialFolder != null)
+                    Document.LastImageFolder = relPath;
+
+                    if (documentFolder != null)
                     {
                         try
                         {
-                            relPath = FileUtils.GetRelativePath(sd.FileName, initialFolder);
+                            relPath = FileUtils.GetRelativePath(sd.FileName, documentFolder);
                         }
                         catch (Exception ex)
                         {
                             mmApp.Log($"Failed to get relative path.\r\nFile: {sd.FileName}, Path: {imagePath}", ex);
                         }
+
                         imagePath = relPath;
                     }
 
@@ -298,10 +378,10 @@ namespace MarkdownMonster.Windows
 
                     Image = imagePath;
                     IsMemoryImage = false;
-
                 }
             }
         }
+
 
         private void Button_Click(object sender, RoutedEventArgs e)
         {
@@ -331,12 +411,23 @@ namespace MarkdownMonster.Windows
                     Base64EncodeImage(Image);
             else
                 Image = null;
-
         }
 
         private void Button_EditImage(object sender, RoutedEventArgs e)
         {
-            string exe = mmApp.Configuration.ImageEditor;
+            if (IsMemoryImage)
+            {
+                EditMemoryImage();
+                return;
+            } 
+
+            string exe = mmApp.Configuration.Images.ImageEditor;
+
+            if (string.IsNullOrEmpty(Image))
+            {
+                StatusBar.ShowStatusError("No image selected.");
+                return;
+            }
 
             string imageFile = Image;
             if (!imageFile.Contains(":\\") && Document != null)
@@ -345,27 +436,50 @@ namespace MarkdownMonster.Windows
                     Image);
             }
 
-			if (!mmFileUtils.OpenImageInImageEditor(imageFile))
-			{
-				MessageBox.Show("Unable to launch image editor " + Path.GetFileName(mmApp.Configuration.ImageEditor) +
-				                "\r\n\r\n" +
-				                "Most likely the image editor configured in settings is not a valid executable. Please check the 'ImageEditor' key in the Markdown Monster Settings.\r\n\r\n" +
-				                "We're opening the settings file for you in the editor now.",
-					"Image Launching Error",
-					MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (!mmFileUtils.OpenImageInImageEditor(imageFile))
+            {
+                MessageBox.Show("Unable to launch image editor " + Path.GetFileName(mmApp.Configuration.Images.ImageEditor) +
+                                "\r\n\r\n" +
+                                "Most likely the image editor configured in settings is not a valid executable. Please check the 'ImageEditor' key in the Markdown Monster Settings.\r\n\r\n" +
+                                "We're opening the settings file for you in the editor now.",
+                    "Image Launching Error",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
 
-				mmApp.Model.Window.OpenTab(Path.Combine(mmApp.Configuration.CommonFolder, "MarkdownMonster.json"));
-			}
-			else
-				ShowStatus("Launching editor " + exe + " with " + imageFile, 5000);
+                mmApp.Model.Window.OpenTab(Path.Combine(mmApp.Configuration.CommonFolder, "MarkdownMonster.json"));
+            }
+            else
+                StatusBar.ShowStatusSuccess($"Launching editor {exe} with {imageFile}");
         }
+
+        private void EditMemoryImage()
+        {
+            var bmpSource = ImagePreview.Source as BitmapSource;
+            if (bmpSource == null)
+                return;
+
+            var bmp = WindowUtilities.BitmapSourceToBitmap(bmpSource);
+            if (bmp == null)
+            {
+                StatusBar.ShowStatusError("Couldn't convert image to file.");
+                return;
+            }
+
+            var filename = Path.Combine(Path.ChangeExtension(Path.GetTempFileName(), "png"));
+            bmp.Save(filename);
+
+            mmFileUtils.OpenImageInImageEditor(filename);
+            StatusBar.ShowStatusSuccess("When done copy your image to the clipboard and return to this dialog.");
+        }
+
 
         private void Button_ClearImage(object sender, RoutedEventArgs e)
         {
             Image = null;
             ImageText = null;
             ImagePreview.Source = null;
-            ShowStatus("Image has been cleared.", mmApp.Configuration.StatusMessageTimeout);
+            IsMemoryImage = false;
+
+            StatusBar.ShowStatusSuccess("Image has been cleared.");
         }
 
         private void Button_CopyImage(object sender, RoutedEventArgs e)
@@ -376,12 +490,12 @@ namespace MarkdownMonster.Windows
                 if (src != null)
                 {
                     Clipboard.SetImage(src);
-                    ShowStatus("Image copied to the Clipboard.", mmApp.Configuration.StatusMessageTimeout);
+                    StatusBar.ShowStatus("Image copied to the Clipboard.");
                 }
             }
         }
 
-        private void SelectLocalImageFile_Click(object sender, RoutedEventArgs e)
+        private void Button_SelectLocalImageFile_Click(object sender, RoutedEventArgs e)
         {
             var fd = new OpenFileDialog
             {
@@ -393,8 +507,8 @@ namespace MarkdownMonster.Windows
                 Title = "Embed Image"
             };
 
-            if (!string.IsNullOrEmpty(mmApp.Configuration.LastImageFolder))
-                fd.InitialDirectory = mmApp.Configuration.LastImageFolder;
+            if (!string.IsNullOrEmpty(Document.LastImageFolder))
+                fd.InitialDirectory = Document.LastImageFolder;
             else if (!string.IsNullOrEmpty(MarkdownFile))
                 fd.InitialDirectory = Path.GetDirectoryName(MarkdownFile);
             else
@@ -404,7 +518,9 @@ namespace MarkdownMonster.Windows
             if (res == null || !res.Value)
                 return;
 
+
             Image = fd.FileName;
+            Document.LastImageFolder = Path.GetDirectoryName(fd.FileName);
 
             if (PasteAsBase64Content)
             {
@@ -456,10 +572,11 @@ namespace MarkdownMonster.Windows
 
                     if (mbres.Equals(MessageBoxResult.Yes))
                     {
-                        string newImageFileName = Path.Combine(mdPath, System.IO.Path.GetFileName(fd.FileName));
+                        string newImageFileName = Path.Combine(mdPath, Path.GetFileName(fd.FileName));
                         var sd = new SaveFileDialog
                         {
-                            Filter = "Image files (*.png;*.jpg;*.gif;)|*.png;*.jpg;*.jpeg;*.gif|All Files (*.*)|*.*",
+                            Filter =
+                                "Image files (*.png;*.jpg;*.gif;)|*.png;*.jpg;*.jpeg;*.gif|All Files (*.*)|*.*",
                             FilterIndex = 1,
                             FileName = newImageFileName,
                             InitialDirectory = mdPath,
@@ -474,6 +591,7 @@ namespace MarkdownMonster.Windows
                             try
                             {
                                 File.Copy(fd.FileName, sd.FileName, true);
+                                Document.LastImageFolder = Path.GetDirectoryName(sd.FileName);
                             }
                             catch (Exception ex)
                             {
@@ -509,90 +627,164 @@ namespace MarkdownMonster.Windows
             SetImagePreview("file:///" + fd.FileName);
 
             IsMemoryImage = false;
-
-            mmApp.Configuration.LastImageFolder = Path.GetDirectoryName(fd.FileName);
             TextImageText.Focus();
         }
 
-        #region StatusBar Display
-
-        public void ShowStatus(string message = null, int milliSeconds = 0)
+        private void ButtonRememberLastSize_Click(object sender, RoutedEventArgs e)
         {
-            if (message == null)
+            ImageWidth = Model.Configuration.Images.LastImageWidth;
+            ImageHeight = Model.Configuration.Images.LastImageHeight;
+            ImageSizeChanged(ResizeModes.Auto);
+        }
+
+        #endregion
+
+        #region Image Manipulation
+
+        public void SetImagePreview(string url = null)
+        {
+            if (string.IsNullOrEmpty(url))
             {
-                message = "Ready";
-                SetStatusIcon();
+                url = GetFullImageFilename();
+                if (url == null)
+                    url = Image;
             }
 
-            StatusText.Text = message;
-
-            if (milliSeconds > 0)
+            try
             {
-                Dispatcher.DelayWithPriority(milliSeconds, (win) =>
+
+                var bmi = new BitmapImage();
+                bmi.BeginInit();
+                //bmi.CacheOption = BitmapCacheOption.OnLoad;
+                bmi.UriSource = new Uri(url);
+                bmi.EndInit();
+
+                SetImagePreview(bmi);
+
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("SetImagePreview Exception: " + ex.Message);
+            }
+        }
+
+        private void SetImagePreview(BitmapSource source)
+        {
+            try
+            {
+                ImagePreview.Source = source;
+                if (Height < 400)
                 {
-                    ShowStatus(null, 0);
-                    SetStatusIcon();
-                }, this);
+                    Top -= 300;
+                    Left -= 100;
+                    Width = 800;
+                    Height = 800;
+                }
+
+                
+                var bmp = source as InteropBitmap;
+                if (bmp != null)
+                {
+                    ImageHeight = (int) bmp.PixelHeight;
+                    ImageWidth = (int) bmp.PixelWidth;
+                }
+                else
+                {
+                    ImageHeight = 0;
+                    ImageWidth = 0;
+                }
+
+                ResizeImagePreviewControl(bmp);
             }
-            WindowUtilities.DoEvents();
+            catch(Exception ex)
+            {
+                Debug.WriteLine("SetImagePreview Exception: " + ex.Message);
+            }
+        }
+
+
+        /// <summary>
+        /// This method will resize the in-memory image using a fixed ratio
+        /// </summary>
+        private void ImageSizeChanged(ResizeModes resizeMode)
+        {
+            var image = ImagePreview.Source as BitmapSource;
+            if (image == null)
+                return;
+
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (ImageHeight == (int) image.Height && ImageWidth == (int) image.Width)
+                    return;
+
+                using (var bitmap = WindowUtilities.BitmapSourceToBitmap(ImagePreview.Source as BitmapSource))
+                {
+                    if (bitmap == null)
+                    {
+                        StatusBar.ShowStatusError("No image to resize.");
+                        return;
+                    }
+
+                    if (ImageWidth != bitmap.Width && ImageHeight != bitmap.Height)
+                        return;
+
+                    
+                    Bitmap bitmap2;
+                    using (bitmap2 = ImageResizer.ResizeImageByMode(bitmap, ImageWidth, ImageHeight,resizeMode))
+                    {
+                        if (bitmap2 != null)
+                        {
+                            Debug.WriteLine($"ImageSizeChanged from: {ImageWidth} x {ImageHeight} to: {bitmap2.Width} x {bitmap2.Height}");
+
+
+                            ImageWidth = bitmap2.Width;
+                            ImageHeight = bitmap2.Height;
+
+                            var bmpSource = WindowUtilities.BitmapToBitmapSource(bitmap2);
+                            WindowUtilities.DoEvents();
+                            ImagePreview.Source = bmpSource;
+
+
+                            Dispatcher.InvokeAsync(() => ResizeImagePreviewControl(bmpSource),
+                                DispatcherPriority.ApplicationIdle);
+                        }
+                    }
+                }
+            }, DispatcherPriority.ApplicationIdle);
         }
 
         /// <summary>
-        /// Status the statusbar icon on the left bottom to some indicator
+        /// Figures out how to stretch the image that is displayed whether it's 'normal'
+        /// or adjusted.
         /// </summary>
-        /// <param name="icon"></param>
-        /// <param name="color"></param>
-        /// <param name="spin"></param>
-        public void SetStatusIcon(FontAwesomeIcon icon, Color color, bool spin = false)
+        /// <param name="image"></param>
+        private void ResizeImagePreviewControl(BitmapSource image)
         {
-            StatusIcon.Icon = icon;
-            StatusIcon.Foreground = new SolidColorBrush(color);
-            if (spin)
-                StatusIcon.SpinDuration = 1;
+            if (image == null)
+                return;
 
-            StatusIcon.Spin = spin;
-        }
+            // ensure that any new image assignment has 
+            if (image.Width < Width - 20 && image.Height < PageGrid.RowDefinitions[1].ActualHeight)
+                ImagePreview.Stretch = Stretch.None;
+            else
+                ImagePreview.Stretch = Stretch.Uniform;
 
-        /// <summary>
-        /// Resets the Status bar icon on the left to its default green circle
-        /// </summary>
-        public void SetStatusIcon()
-        {
-            StatusIcon.Icon = FontAwesomeIcon.Circle;
-            StatusIcon.Foreground = new SolidColorBrush(Colors.Green);
-            StatusIcon.Spin = false;
-            StatusIcon.SpinDuration = 0;
-            StatusIcon.StopSpin();
-        }
+            Debug.WriteLine($"ResizeImagePreviewControl: {image.Width} x {image.Height} {ImagePreview.Stretch}");
 
-        /// <summary>
-        /// Helper routine to show a Metro Dialog. Note this dialog popup is fully async!
-        /// </summary>
-        /// <param name="title"></param>
-        /// <param name="message"></param>
-        /// <param name="style"></param>
-        /// <param name="settings"></param>
-        /// <returns></returns>
-        public async Task<MessageDialogResult> ShowMessageOverlayAsync(string title, string message,
-            MessageDialogStyle style = MessageDialogStyle.Affirmative,
-            MetroDialogSettings settings = null)
-        {
-            return await this.ShowMessageAsync(title, message, style, settings);
         }
 
         #endregion
 
-        #endregion
-
-        #region Image Display
 
         private void PasteImageFromClipboard()
         {
             SetImagePreview(Clipboard.GetImage());
+
             Image = null;
             IsMemoryImage = true;
 
-            ShowStatus("Image pasted from clipboard...", 5000);
+
+            StatusBar.ShowStatusSuccess("Image pasted from clipboard.");
         }
 
         /// <summary>
@@ -625,8 +817,7 @@ namespace MarkdownMonster.Windows
             }
             catch (Exception ex)
             {
-                ShowStatus("Image base64 encoding failed: " + ex.GetBaseException().Message, 5000);
-                this.SetStatusIcon(FontAwesomeIcon.Warning, Colors.Firebrick);
+                StatusBar.ShowStatusError("Image base64 encoding failed: " + ex.GetBaseException().Message);
             }
         }
 
@@ -643,9 +834,32 @@ namespace MarkdownMonster.Windows
             }
             catch (Exception ex)
             {
-                ShowStatus("Image base64 encoding failed: " + ex.GetBaseException().Message, 5000);
-                this.SetStatusIcon(FontAwesomeIcon.Warning, Colors.Firebrick);
+                StatusBar.ShowStatusError($"Image base64 encoding failed: {ex.GetBaseException().Message}");
             }
+        }
+
+        #region Image Operationz
+
+        private void TextBox_ImageSizeChanged(object sender, RoutedEventArgs e)
+        {
+            var resizeMode = ResizeModes.ByWidth;
+            if (sender == TextBoxImageHeight)
+                resizeMode = ResizeModes.ByHeight;
+            if (!IsImageFixedRatio)
+                resizeMode = ResizeModes.DontKeepAspectRatio;
+
+
+            // have to handle out of band or the binding hasn't updated yet
+            Dispatcher.InvokeAsync(() =>
+            {
+                //var txtBox = sender as TextBox;
+                //Debug.WriteLine(
+                //    $"Image Size Changed {((TextBox) sender).Name} {ImageWidth} x {ImageHeight} {txtBox.Text}");
+                ImageSizeChanged(resizeMode);
+
+                Model.Configuration.Images.LastImageWidth = ImageWidth;
+                Model.Configuration.Images.LastImageHeight = ImageHeight;
+            }, DispatcherPriority.ApplicationIdle);
         }
 
         private void PasteImage_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -674,63 +888,17 @@ namespace MarkdownMonster.Windows
             if (string.IsNullOrEmpty(imageFile))
                 return null;
 
-             if (!File.Exists(imageFile))
+            try
+            {
+                if (!File.Exists(imageFile))
                     imageFile = Path.Combine(Path.GetDirectoryName(Editor.MarkdownDocument.Filename), imageFile);
 
-            return File.Exists(imageFile) ? imageFile : null;
-        }
-
-        public void SetImagePreview(string url = null)
-        {
-            if (string.IsNullOrEmpty(url))
-            {
-                url = GetFullImageFilename();
-                if (url == null)
-                    url = Image;
-            }
-
-            try
-            {
-                var bmi = new BitmapImage(new Uri(url))
-                {
-                    CreateOptions = BitmapCreateOptions.IgnoreImageCache, // no locking
-                };
-
-            ImagePreview.Source = bmi;
-                if (Height < 400)
-                {
-                    Top -= 300;
-                    Left -= 100;
-                    Width = 800;
-                    Height = 800;
-                }
-
-                WindowUtilities.DoEvents();
-                PasteImage_SizeChanged(this, null);
+                return File.Exists(imageFile) ? imageFile : null;
             }
             catch
             {
-            }
-        }
-
-        private void SetImagePreview(BitmapSource source)
-        {
-            try
-            {
-                ImagePreview.Source = source;
-                if (Height < 400)
-                {
-                    Top -= 300;
-                    Left -= 100;
-                    Width = 800;
-                    Height = 800;
-                }
-
-                WindowUtilities.DoEvents();
-                PasteImage_SizeChanged(this, null);
-            }
-            catch
-            {
+                mmApp.Log("Non-fatal error: Invalid image filename: " + imageFile);
+                return null;
             }
         }
 

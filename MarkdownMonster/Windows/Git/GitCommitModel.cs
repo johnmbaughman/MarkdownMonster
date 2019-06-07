@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Media;
+using System.Windows.Threading;
 using LibGit2Sharp;
 using MarkdownMonster.Annotations;
 using MarkdownMonster.Utilities;
@@ -17,26 +18,7 @@ namespace MarkdownMonster.Windows
 {
     public class GitCommitModel : INotifyPropertyChanged
     {
-        
-        
-
-        public GitCommitModel(string fileOrFolder, bool commitRepository = false)
-        {
-            CommitRepository = commitRepository;
-            Filename = fileOrFolder;
-            AppModel = mmApp.Model;
-            Window = AppModel.Window;
-
-            GitHelper = new GitHelper();
-            GitHelper.OpenRepository(Filename);
-
-            GitUsername = mmApp.Configuration.Git.GitName;
-            GitEmail = mmApp.Configuration.Git.GitEmail;
-
-            ShowUserInfo = string.IsNullOrEmpty(GitUsername);
-        }
-        
-
+               
         public string Filename
         {
             get { return _Filename; }
@@ -113,30 +95,27 @@ namespace MarkdownMonster.Windows
 
         public string GitUsername
         {
-            get { return _GitUsername; }
+            get
+            {
+                return mmApp.Model.Configuration.Git.GitName;
+            }
             set
             {
-                if (value == _GitUsername) return;
-                _GitUsername = value;
-                OnPropertyChanged(nameof(GitUsername));
+                mmApp.Model.Configuration.Git.GitName = value;
             }
-        }
-        private string _GitUsername;
-
+        }        
 
         public string GitEmail
         {
-            get { return _GitEmail; }
+            get
+            {
+                return mmApp.Model.Configuration.Git.GitEmail;
+            }
             set
             {
-                if (value == _GitEmail) return;
-                _GitEmail = value;
-                OnPropertyChanged(nameof(GitEmail));
-            }
+                mmApp.Model.Configuration.Git.GitEmail = value;            }            
         }
-        private string _GitEmail;
-
-
+        
 
         public bool ShowUserInfo
         {
@@ -165,6 +144,24 @@ namespace MarkdownMonster.Windows
         private string _Branch;
 
 
+        public List<string> LocalBranches
+        {
+            get
+            {
+                if (GitHelper.Repository?.Branches == null)
+                    return null;
+
+                var list = GitHelper.Repository.Branches
+                    .Where(b => b.IsRemote == false)
+                    .Select( b=> b.FriendlyName)                    
+                    .ToList();
+
+                list.Insert(0, "<Create new Branch...>");
+                return list;
+            }            
+        }
+
+
         public string Remote
         {
             get { return _Remote; }
@@ -189,7 +186,7 @@ namespace MarkdownMonster.Windows
             }
         }
         private ObservableCollection<RepositoryStatusItem> _repositoryStatusItems;
-
+        
         public AppModel AppModel { get; set; }
 
         public MainWindow Window { get; set; }
@@ -211,7 +208,34 @@ namespace MarkdownMonster.Windows
                 OnPropertyChanged();
             }
         }
+
         
+
+
+        #region Load
+
+        public GitCommitModel(string fileOrFolder, bool commitRepository = false)
+        {
+            CommitRepository = commitRepository;
+            Filename = fileOrFolder;
+            AppModel = mmApp.Model;
+            Window = AppModel.Window;
+
+            GitHelper = new GitHelper();
+            GitHelper.OpenRepository(Filename);            
+            
+            if (string.IsNullOrEmpty(GitEmail) && string.IsNullOrEmpty(GitUsername))
+            {
+                var userEmail = GitHelper.GetGitNameAndEmailFromGitConfig();
+                GitUsername = userEmail[0];
+                GitEmail = userEmail[1];
+            }            
+
+            ShowUserInfo = string.IsNullOrEmpty(GitUsername);
+
+            
+        }
+        #endregion
 
         #region Helpers
 
@@ -233,39 +257,44 @@ namespace MarkdownMonster.Windows
         {
             WindowUtilities.FixFocus(CommitWindow, CommitWindow.ListChangedItems);
 
-            CommitWindow.ShowStatusProgress("Committing files...");
+            CommitWindow.StatusBar.ShowStatusProgress("Committing files...");
 
-            var files = new ObservableCollection<RepositoryStatusItem>(RepositoryStatusItems.Where(it => it.Selected));
+            var files = new ObservableCollection<RepositoryStatusItem>(
+                RepositoryStatusItems.Where(it => it.Selected));
 
             if (files.Count < 1)
             {
-                CommitWindow.ShowStatusError("There are no changes in this repository.");
+                Window.ShowStatusError("There are no changes in this repository.");
                 return false;
             }
-
-
+        
             if (!GitHelper.Commit(files, CommitMessage, GitUsername, GitEmail) )
             {                
-                CommitWindow.ShowStatusError(GitHelper.ErrorMessage);
+                CommitWindow.StatusBar.ShowStatusError(GitHelper.ErrorMessage);
                 return false;
             }
 
             if (!pushToRemote)
                 return true;
 
-            CommitWindow.ShowStatusProgress("Pushing to remote...");
+            CommitWindow.StatusBar.ShowStatusProgress("Pushing to remote...");
 
             using (var repo = GitHelper.OpenRepository(files[0].FullPath))
             {
-                var branch = GitHelper.Repository.Head?.TrackedBranch?.FriendlyName;
-                if (branch != null)
+                if (repo == null)
                 {
-                    branch = branch.Substring(branch.IndexOf("/") + 1);
+                    CommitWindow.StatusBar.ShowStatusError(GitHelper.ErrorMessage);
+                    return false;
                 }
+
+                var branch = repo.Head?
+                                      .TrackedBranch?
+                                      .FriendlyName;
+                branch = branch?.Substring(branch.IndexOf("/") + 1);
 
                 if (!await GitHelper.PushAsync(repo.Info.WorkingDirectory,branch) )
                 {
-                    CommitWindow.ShowStatusError(GitHelper.ErrorMessage);
+                    CommitWindow.StatusBar.ShowStatusError(GitHelper.ErrorMessage);
                     return false;
                 }
             }
@@ -275,18 +304,39 @@ namespace MarkdownMonster.Windows
 
         public bool PushChanges()
         {            
-            CommitWindow.ShowStatusProgress("Pushing files to the Git Remote...");
+            CommitWindow.StatusBar.ShowStatusProgress("Pushing files to the Git Remote...");
 
             var repo = GitHelper.OpenRepository(Filename);
             if (repo == null)
             {
-                CommitWindow.ShowStatusError("Couldn't determine branch to commit to.");
+                CommitWindow.StatusBar.ShowStatusError("Couldn't determine branch to commit to.");
                 return false;
             }
 
             if (!GitHelper.Push(repo.Info.WorkingDirectory, Branch))
             {
-                CommitWindow.ShowStatusError(GitHelper.ErrorMessage);
+                CommitWindow.StatusBar.ShowStatusError(GitHelper.ErrorMessage);
+                return false;
+            }
+
+            return true;
+        }
+
+        public async Task<bool> PushChangesAsync()
+        {
+            CommitWindow.StatusBar.ShowStatusProgress("Pushing files to the Git Remote...");
+
+            var repo = GitHelper.OpenRepository(Filename);
+            if (repo == null)
+            {
+                CommitWindow.StatusBar.ShowStatusError("Couldn't determine branch to commit to.");
+                return false;
+            }
+
+            bool pushResult = await GitHelper.PushAsync(repo.Info.WorkingDirectory, Branch);
+            if (!pushResult)
+            {
+                CommitWindow.StatusBar.ShowStatusError(GitHelper.ErrorMessage);
                 return false;
             }
 
@@ -304,7 +354,7 @@ namespace MarkdownMonster.Windows
 
             if (!GitHelper.Pull(repo.Info.WorkingDirectory))
             {
-                CommitWindow.ShowStatusError(GitHelper.ErrorMessage);
+                CommitWindow.StatusBar.ShowStatusError(GitHelper.ErrorMessage);
                 return false;
             }
 
@@ -322,7 +372,7 @@ namespace MarkdownMonster.Windows
 
             if (!await GitHelper.PullAsync(repo.Info.WorkingDirectory))
             {
-                CommitWindow.ShowStatusError(GitHelper.ErrorMessage);
+                CommitWindow.StatusBar.ShowStatusError(GitHelper.ErrorMessage);
                 return false;
             }
 

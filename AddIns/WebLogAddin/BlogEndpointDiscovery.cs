@@ -22,7 +22,7 @@ namespace WebLogAddin
         /// </summary>
         /// <param name="url"></param>
         /// <returns></returns>
-        public BlogApiEndpoint DiscoverBlogEndpoint(string url, string blogId, string blogType)
+        public async Task<BlogApiEndpoint> DiscoverBlogEndpointAsync(string url, string blogId, string blogType)
         {
             string apiLink = url;
 
@@ -33,17 +33,19 @@ namespace WebLogAddin
             {
                 var settings = new HttpRequestSettings()
                 {
-                    Url = url
+                    Url = url,
+                    UserAgent = "Markdown-Monster",
+                    Timeout = 30_000
                 };
-                settings.Headers.Add("User-Agent",
-                    "User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36");
+                //settings.Headers.Add("User-Agent",
+                //    "User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36");
                 settings.Headers.Add("Accept",
                     "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
 
-                string html = HttpUtils.HttpRequestString(settings);
+                string html = await HttpUtils.HttpRequestStringAsync(settings);
 
                 // if not HTML assume we are on the endpoint 
-                if (!settings.Response.ContentType.StartsWith("text/html"))                
+                if (!settings.Response.ContentType.StartsWith("text/html"))
                     return result;
 
                 var doc = new HtmlDocument();
@@ -62,6 +64,8 @@ namespace WebLogAddin
                 if (nodes == null || nodes.Count < 1)
                 {
                     // doesn't have RDS data - OK use original URL
+                    result.HasError = true;
+                    result.ErrorMessage = "Couldn't find a Weblog endpoint or RDS link at this URL.";
                     return result;
                 }
 
@@ -121,7 +125,7 @@ namespace WebLogAddin
                 result = new BlogApiEndpoint(apiLink, blogId, blogType, rsd);
             }
             catch (Exception ex)
-            {
+            {                
                 result.HasError = true;
                 result.ErrorMessage = ex.Message;
             }
@@ -136,7 +140,7 @@ namespace WebLogAddin
         /// <param name="url"></param>
         /// <param name="mode"></param>
         /// <returns></returns>
-        public bool CheckRpcEndpoint(string url, string mode = "MetaWeblog")
+        public async Task<bool> CheckRpcEndpointAsync(string url, string mode = "MetaWeblog")
         {
             string xml = @"<?xml version=""1.0"" encoding=""utf-8""?>
 <methodCall>
@@ -165,17 +169,19 @@ namespace WebLogAddin
                 Url = url,
                 ContentType= "text/xml",
                 HttpVerb = "POST",
-                Content = xml                
+                Content = xml,
+                UserAgent = "Markdown-Monster",
+                Timeout = 30_000
             };
-            settings.Headers.Add("User-Agent",
-                "User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36");
+            //settings.Headers.Add("User-Agent",
+            //    "User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36");
             settings.Headers.Add("Accept",
                 "Accept: */*");
 
             
             try
             {
-                var result = HttpUtils.HttpRequestString(settings);
+                var result = await HttpUtils.HttpRequestStringAsync(settings);
                 if (result.Contains("<methodResponse>"))
                     return true;
             }

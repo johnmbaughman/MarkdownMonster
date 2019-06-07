@@ -426,7 +426,7 @@ namespace MarkdownMonster.AddIns
         /// <returns></returns>
         public string GetSelection()
         {
-            return Model.ActiveEditor?.AceEditor.getselection(false) ?? string.Empty;
+            return Model.ActiveEditor?.AceEditor.GetSelection() ?? string.Empty;
         }
         
         /// <summary>
@@ -440,10 +440,10 @@ namespace MarkdownMonster.AddIns
                 return;
 
             if (!string.IsNullOrEmpty(text))
-                editor.AceEditor.setselection(text);
+                editor.AceEditor.SetSelection(text);
 
             editor.WebBrowser.Focus();
-            editor.AceEditor.setfocus(true);
+            editor.AceEditor.SetFocus();
 
             editor.MarkdownDocument.CurrentText = editor.GetMarkdown();
             Model.Window.PreviewMarkdown(editor, true);            
@@ -455,7 +455,7 @@ namespace MarkdownMonster.AddIns
         /// </summary>
         public void SetEditorFocus()
         {
-            Model.Window.Activate();
+            Model.Window?.Activate();
             Model.ActiveEditor?.SetEditorFocus();
         }
 

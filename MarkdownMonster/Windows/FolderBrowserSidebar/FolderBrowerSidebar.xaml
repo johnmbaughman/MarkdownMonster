@@ -18,17 +18,19 @@
         <HierarchicalDataTemplate x:Key="FolderTemplate"  ItemsSource="{Binding Path=Files}" >
             <!--<Grid  Width="300" >-->
             <Grid MouseUp="TreeViewItem_MouseUpClick" MouseDown="TreeViewItem_MouseDownClick" >
+                <Grid.Resources>
+                   
+                </Grid.Resources>
 
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="auto" />
                     <ColumnDefinition Width="auto" />
-                        <ColumnDefinition Width="*" />
-                       
-                    </Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
                 
                 <Image Source="{Binding FileStatus,Converter={StaticResource SourceControlIconConverter}}"
-                       Width="7" Margin="1,4,2,0"  />
+                       Width="6" Margin="1,4,2,0"  />
 
                 <Image Grid.Column="1" Height="17" Width="Auto" Margin="0,0,4,0" >
                         <Image.Style>
@@ -49,14 +51,16 @@
                 <TextBlock Name="TextFileOrFolderName" 
                            Grid.Column="2"
                            Text="{Binding DisplayName, Mode=OneWay}" Padding="5,3,15,3"
-				       Visibility="{Binding IsNotEditing, Converter={StaticResource BooleanToVisibilityConverter}}"
-                       
-                       MouseUp="TextFileOrFolderName_MouseUpToEdit" >
+				       Visibility="{Binding IsNotEditing, Converter={StaticResource BooleanToVisibilityConverter}}"                                 
+                       MouseUp="TextFileOrFolderName_MouseUpToEdit">
                     <TextBlock.Style>
-                        <Style TargetType="TextBlock">
+                        <Style TargetType="{x:Type TextBlock}">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsFolder}" Value="True">
                                     <Setter Property="FontWeight" Value="SemiBold"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsFolder}" Value="False">
+                                    <Setter Property="FontWeight" Value="Normal"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -118,8 +122,8 @@
              controls:TextBoxHelper.SelectAllOnFocus="True"
              Opacity="0.7"             
              PreviewKeyDown="TextSearch_PreviewKeyUp"
-
              controls:TextBoxHelper.Watermark="Search Folder"  controls:TextBoxHelper.ClearTextButton="True" />
+
             <CheckBox IsChecked="{Binding SearchSubTrees}"
                       Click="CheckBox_Click" Content="Search subtrees"                      
                       Margin="17,0,10,10">
@@ -155,7 +159,7 @@
 					   FontWeight="SemiBold" FontSize="11"  Padding="4,5,2,5" />
                 </StackPanel>
 
-                <Button Content="…" Grid.Column="1" Background="Transparent"
+                <Button fa:Awesome.Content="FolderOpen" Grid.Column="1" Background="Transparent"
 			        Foreground="{DynamicResource BlueItem}" Padding="5,0,5,0"
 			        Name="ButtonSelecttFolder" BorderThickness="0"  FontSize="12"
 			        ToolTip="Browse for Folder" 
@@ -169,11 +173,13 @@
 			         Foreground="{DynamicResource BlueItem}" Padding="6,0,6,0" Grid.Column="3"  
 					 Name="ButtonUseCurrentFolder" BorderThickness="0" FontSize="12"
 			         ToolTip="Set Folder to Active Document's Folder" 
-			         Click="ButtonUseCurrentFolder_Click" />
+                     Command="{Binding AppModel.Commands.OpenFolderBrowserCommand}"
+
+			         controls:VisibilityHelper.IsVisible="{Binding AppModel.IsEditorActive}" />
                 <Button  fa:Awesome.Content="Refresh" Background="Transparent" 
 			         Foreground="{DynamicResource BlueItem}" Padding="6,0,6,0" Grid.Column="4"  
 			         Name="ButtonRefreshFolder" BorderThickness="0"  FontSize="12"
-			         ToolTip="Refresh Folder" 
+			         ToolTip="Refresh Folder"
 			         Click="ButtonRefreshFolder_Click" />
                 <Button  fa:Awesome.Content="ChevronCircleLeft" Background="Transparent" 
 			         Foreground="{DynamicResource BlueItem}" Padding="7,0,7,0" Grid.Column="5"  
@@ -214,29 +220,18 @@
                 </TreeView.ContextMenu>
                 <TreeView.ItemContainerStyle>
                     <Style TargetType="{x:Type TreeViewItem}">
-                        <!-- We have to select the item which is right-clicked on -->
-                        <EventSetter Event="TreeViewItem.PreviewMouseRightButtonUp" Handler="TreeViewItem_PreviewMouseRightButtonUp"/>
                         <Setter Property="Visibility" Value="{Binding IsVisible,Mode=TwoWay,Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <Setter Property="IsSelected" Value="{Binding IsSelected,Mode=TwoWay}" />
                         <Setter Property="IsExpanded" Value="{Binding IsExpanded,Mode=TwoWay}" />
+
+                        <!-- We have to select the item which is right-clicked on -->
+                        <EventSetter Event="TreeViewItem.PreviewMouseRightButtonUp" Handler="TreeViewItem_PreviewMouseRightButtonUp"/>
 
                         <!--<EventSetter Event="DragOver" Handler="TreeViewItem_DragOver" />-->
                         <EventSetter Event="Drop" Handler="TreeViewItem_Drop" />
                     </Style>
                 </TreeView.ItemContainerStyle>
             </TreeView>
-
-            <!--<Popup Name="PopupImagePreview" Grid.Row="3" Placement="Mouse" Margin="10" >
-                <Border BorderThickness="1" BorderBrush="#676767" >
-                    <Image Name="ImagePreview" Height="Auto" Width="Auto" 
-				   MinHeight="50"
-				   MinWidth="50"	
-				   MaxHeight="470"
-				   MaxWidth="570" />
-                </Border>
-            </Popup>-->
-
-
         </Grid>
     </Grid>
 </UserControl>

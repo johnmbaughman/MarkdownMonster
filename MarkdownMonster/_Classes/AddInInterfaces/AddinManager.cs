@@ -24,7 +24,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -37,11 +36,10 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interactivity;
 using System.Windows.Media;
-using System.Windows.Threading;
 using FontAwesome.WPF;
-using MarkdownMonster.Windows;
 using MarkdownMonster.Windows.PreviewBrowser;
 using Westwind.Utilities;
+using MarkdownMonster.Utilities;
 
 namespace MarkdownMonster.AddIns
 {
@@ -67,6 +65,13 @@ namespace MarkdownMonster.AddIns
         /// </summary>
         public bool AddinsLoadingComplete { get; set; }
 
+
+        /// <summary>
+        /// Fired when addins complete loading. Action
+        /// fires out of band from Main UI thread, so
+        /// if you do UI operations make sure to use
+        /// a Dispatcher.       
+        /// </summary>
         public Action AddinsLoaded { get; set; }
 
         /// <summary>
@@ -83,7 +88,7 @@ namespace MarkdownMonster.AddIns
         public AddinManager()
         {
             AddIns = new List<MarkdownMonsterAddin>();
-
+            
             // TODO: REMOVE in future Versions - added to deal with internalized Snippets Addin - added in 1.11.3            
             var snippetsAddin = Path.Combine(mmApp.Configuration.AddinsFolder, "Snippets");
             if (Directory.Exists(snippetsAddin))
@@ -119,21 +124,24 @@ namespace MarkdownMonster.AddIns
             {
                 addin.Model = window.Model;                
 
-                foreach (var addInMenuItem in addin.MenuItems)
+                foreach (var addinMenuItem in addin.MenuItems)
                 {
                     try
                     {
                         var mitem = new MenuItem
                         {
-                            Header = addInMenuItem.Caption,
-                            Name=StringUtils.ToCamelCase(addInMenuItem.Caption)
+                            Header = addinMenuItem.Caption,
+                            Name=StringUtils.ToCamelCase(addinMenuItem.Caption)
                         };
+
+                        if (string.IsNullOrEmpty(addin.Name))
+                            addin.Name = addinMenuItem.Caption;
                         
                         Action<object, ICommand> xAction = (s, c) =>
                         {
                             try
                             {
-                                addInMenuItem.Execute?.Invoke(mitem);
+                                addinMenuItem.Execute?.Invoke(mitem);
                             }
                             catch (Exception ex)
                             {
@@ -145,12 +153,12 @@ namespace MarkdownMonster.AddIns
                             }
                         };
                         Func<object, ICommand, bool> cxAction = null;
-                        if (addInMenuItem.CanExecute != null)
+                        if (addinMenuItem.CanExecute != null)
                             cxAction = (s, e) =>
                             {
                                 try
                                 {
-                                    return addInMenuItem.CanExecute.Invoke(s);
+                                    return addinMenuItem.CanExecute.Invoke(s);
                                 }
                                 catch (Exception ex)
                                 {
@@ -158,47 +166,47 @@ namespace MarkdownMonster.AddIns
                                     return true;
                                 }
                             };                    
-                        addInMenuItem.Command = new CommandBase(xAction,cxAction);                    
-                        mitem.Command = addInMenuItem.Command;
+                        addinMenuItem.Command = new CommandBase(xAction,cxAction);                    
+                        mitem.Command = addinMenuItem.Command;
 
                         addin.Model.Window.MenuAddins.Items.Add(mitem);
                     
                         // if an icon is provided also add to toolbar
-                        if (addInMenuItem.FontawesomeIcon != FontAwesomeIcon.None || addInMenuItem.IconImageSource != null)
+                        if (addinMenuItem.FontawesomeIcon != FontAwesomeIcon.None || addinMenuItem.IconImageSource != null)
                         {
-                            var hasConfigMenu = addInMenuItem.ExecuteConfiguration != null;
+                            var hasConfigMenu = addinMenuItem.ExecuteConfiguration != null;
 
                             Brush colorBrush;
-                            if (string.IsNullOrEmpty(addInMenuItem.FontawesomeIconColor))
+                            if (string.IsNullOrEmpty(addinMenuItem.FontawesomeIconColor))
                                 colorBrush = mmApp.Model.Window.Foreground;
                             else
                             {                                
-                                colorBrush = new BrushConverter().ConvertFrom(addInMenuItem.FontawesomeIconColor) as Brush;
+                                colorBrush = new BrushConverter().ConvertFrom(addinMenuItem.FontawesomeIconColor) as Brush;
                             }
 
                             var titem = new Button();
 
-                            var source  = addInMenuItem.IconImageSource ??
-                                          ImageAwesome.CreateImageSource(addInMenuItem.FontawesomeIcon, colorBrush); 
+                            var source  = addinMenuItem.IconImageSource ??
+                                          ImageAwesome.CreateImageSource(addinMenuItem.FontawesomeIcon, colorBrush); 
                             
                             titem.Content = new Image()
                             {
                                 Source = source,
-                                ToolTip = addInMenuItem.Caption + 
-                                          (!string.IsNullOrEmpty(addInMenuItem.KeyboardShortcut) ?
-                                              $" ({addInMenuItem.KeyboardShortcut})" :
+                                ToolTip = addinMenuItem.Caption + 
+                                          (!string.IsNullOrEmpty(addinMenuItem.KeyboardShortcut) ?
+                                              $" ({addinMenuItem.KeyboardShortcut})" :
                                               string.Empty),
-                                Height = addInMenuItem.IconImageSource == null ? 18 : 19,
-                                Width = addInMenuItem.IconImageSource == null ? 18 : 19,                           
+                                Height = addinMenuItem.IconImageSource == null ? 18 : 19,
+                                Width = addinMenuItem.IconImageSource == null ? 18 : 19,                           
                                 Margin = new Thickness(5, 0, hasConfigMenu ? 0 : 5, 0)
                             };
-                            addInMenuItem.MenuItemButton = titem;
+                            addinMenuItem.MenuItemButton = titem;
                         
 
-                            if (addInMenuItem.Execute != null)
+                            if (addinMenuItem.Execute != null)
                             {
-                                titem.Command = addInMenuItem.Command;
-                                AddKeyboardShortcut(addInMenuItem, addin);
+                                titem.Command = addinMenuItem.Command;
+                                AddKeyboardShortcut(addinMenuItem, addin);
                             }
                         
                             addin.Model.Window.ToolbarAddIns.Visibility = Visibility.Visible;
@@ -219,7 +227,7 @@ namespace MarkdownMonster.AddIns
                                         Width = 8,
                                         Margin = new Thickness(0, 0, 0, 0),
                                     },
-                                    ToolTip = addInMenuItem.Caption + " Configuration",                                
+                                    ToolTip = addinMenuItem.Caption + " Configuration",                                
                                 };
 
                                 var ctxm = new ContextMenu();
@@ -234,27 +242,58 @@ namespace MarkdownMonster.AddIns
                                     ctxm.Items.Clear();
                                     var configMenuItem = new MenuItem()
                                     {
-                                        Header = addInMenuItem.Caption
+                                        Header = addinMenuItem.Caption
                                     };
-                                    configMenuItem.Command = addInMenuItem.Command;                                
-                                    if (addInMenuItem.CanExecute != null)
-                                        configMenuItem.IsEnabled = addInMenuItem.CanExecute.Invoke(sender);
+                                    configMenuItem.Command = addinMenuItem.Command;                                
+                                    if (addinMenuItem.CanExecute != null)
+                                        configMenuItem.IsEnabled = addinMenuItem.CanExecute.Invoke(sender);
                                     ctxm.Items.Add(configMenuItem);
 
                                     configMenuItem = new MenuItem()
                                     {
-                                        Header = addInMenuItem.Caption + " Configuration",
+                                        Header = $"{addinMenuItem.Caption} Configuration",
                                     };
-                                    if (addInMenuItem.ExecuteConfiguration != null)
-                                        configMenuItem.Click += (s, e) => addInMenuItem.ExecuteConfiguration?.Invoke(s);
+                                    if (addinMenuItem.ExecuteConfiguration != null)
+                                        configMenuItem.Click += (s, e) => addinMenuItem.ExecuteConfiguration?.Invoke(s);
 
-                                    addInMenuItem.ConfigurationMenuItem = configMenuItem;
+                                    addinMenuItem.ConfigurationMenuItem = configMenuItem;
 
-                                    ctxm.Items.Add(configMenuItem);                                
+                                    ctxm.Items.Add(configMenuItem);
+
+                                    // Uninstall Addin
+                                    if (!addin.Id.Equals("screencapture",
+                                            StringComparison.InvariantCultureIgnoreCase) &&
+                                        !addin.Id.Equals("weblog", StringComparison.InvariantCultureIgnoreCase) &&
+                                        !addin.Id.Equals("snippets", StringComparison.InvariantCultureIgnoreCase))
+                                    {
+                                        configMenuItem = new MenuItem()
+                                        {
+                                            Header = $"Uninstall {addinMenuItem.Caption}",
+                                        };
+                                        if (addinMenuItem.ExecuteConfiguration != null)
+                                            configMenuItem.Click += (s, e) =>
+                                            {
+                                                if (AddinManager.Current.UninstallAddin(addin.Id))
+                                                {
+                                                    mmApp.Model.Window.ShowStatusSuccess(
+                                                        $"{addin.Name} addin has been removed.");
+                                                    addinMenuItem.MenuItemButton.Visibility = Visibility.Collapsed;
+                                                    tcitem.Visibility = Visibility.Collapsed;
+                                                }
+                                                else
+                                                    mmApp.Model.Window.ShowStatusError(
+                                                        $"Unable to uninstall {addin.Name} addin.");
+                                            };
+
+                                        addinMenuItem.ConfigurationMenuItem = configMenuItem;
+                                        ctxm.Items.Add(configMenuItem);
+                                    }
+
                                 };
 
                                 addin.Model.Window.ToolbarAddIns.Items.Add(tcitem);
                             };
+
                         }
                     }
                     catch (Exception ex)
@@ -287,7 +326,7 @@ namespace MarkdownMonster.AddIns
         {
             if (!string.IsNullOrEmpty(menuItem.KeyboardShortcut))
             {
-                KeyBinding kb = WindowUtilities.CreateKeyboardShortcutBinding(
+                KeyBinding kb = KeyBindingsManager.CreateKeyboardShortcutBinding(
                     menuItem.KeyboardShortcut,
                     menuItem.Command);
                 if (kb != null)
@@ -305,10 +344,10 @@ namespace MarkdownMonster.AddIns
         /// %AppData% folder for user installed addins.
         /// </summary>
         internal void LoadAddins(string addinPath)
-        {            
+        {
             if (!Directory.Exists(addinPath))
                 return;
- 
+
             // Check for Addins to install or delete
             try
             {
@@ -321,7 +360,7 @@ namespace MarkdownMonster.AddIns
                 return;
             }
 
-            var dirs = Directory.GetDirectories(addinPath);            
+            var dirs = Directory.GetDirectories(addinPath);
             foreach (var dir in dirs)
             {
                 var files = Directory.GetFiles(dir, "*addin.dll");
@@ -329,9 +368,24 @@ namespace MarkdownMonster.AddIns
                 {
                     string fname = Path.GetFileName(file).ToLower();
                     if (fname.EndsWith("addin.dll"))
-                        LoadAddinClasses(file);
+                    {
+                        try
+                        {
+                            LoadAddinClasses(file);
+                        }
+                        catch (Exception e)
+                        {
+                            mmApp.Log($"Load Addin Classes failed for: " + fname, e);                            
+                        }
+                    }
                 }
             }
+
+        }
+
+        public void UnloadAddins()
+        {
+            AddIns.Clear();
         }
 
         public bool InstallAddin(string addinId)
@@ -707,7 +761,7 @@ namespace MarkdownMonster.AddIns
         public bool UninstallAddin(string addinId, string addinPath = null)
         {
             // try to fire uninstall code if addin is loaded
-            AddIns.FirstOrDefault(a => a.Id == addinId)?.OnUninstall();
+            AddIns.FirstOrDefault(a => a.Id.Equals(addinId,StringComparison.InvariantCultureIgnoreCase))?.OnUninstall();
 
             if (string.IsNullOrEmpty(addinPath))
                 addinPath = mmApp.Configuration.AddinsFolder;

@@ -7,8 +7,10 @@
         xmlns:controls="http://metro.mahapps.com/winfx/xaml/controls"
         mc:Ignorable="d"
         WindowStyle="ToolWindow" ShowMinButton="False" ShowMaxRestoreButton="False"                      
-        WindowStartupLocation="Manual"        
-        KeyDown="EmojiWindow_KeyDown"                         
+        WindowStartupLocation="Manual"  
+        ShowInTaskbar="False"
+        KeyDown="EmojiWindow_KeyDown"       
+        Icon="../assets/MarkdownMonster_Icon_256.png"
         Title="Pick an Emoji" TitleCharacterCasing="Normal"
         Height="680" Width="835">
     <Grid>

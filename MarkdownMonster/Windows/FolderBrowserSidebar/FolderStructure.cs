@@ -66,7 +66,7 @@ namespace MarkdownMonster.Windows
 				folders = Directory.GetDirectories(baseFolder);			   
 			}
 			catch { }
-
+            
 			if (folders != null)
 			{
                 foreach (var folder in folders.OrderBy(f=> f.ToLower()))
@@ -74,8 +74,9 @@ namespace MarkdownMonster.Windows
 					var name = Path.GetFileName(folder);
 					if (!string.IsNullOrEmpty(name))
 					{
-						if (name.StartsWith("."))
+						if (name == "." || name == "..")
 							continue;
+
 						// skip folders
 						if (("," + ignoredFolders + ",").Contains("," + name.ToLower() + ","))
 							continue;
@@ -195,10 +196,8 @@ namespace MarkdownMonster.Windows
         /// <returns></returns>
 	    public PathItem FindPathItemByFilename(PathItem parent, string fullName)
         {
-            string lowerFullName = fullName.ToLowerInvariant();
-
             // check for root folder match
-            if (parent.FullPath.ToLowerInvariant() == lowerFullName)
+            if (parent.FullPath.Equals(fullName, StringComparison.InvariantCultureIgnoreCase))
                 return parent;
 
             // Files first for perf
@@ -206,13 +205,16 @@ namespace MarkdownMonster.Windows
             {
                 if (string.IsNullOrEmpty(item.FullPath)) continue; // prevent placeholder errors
 
-                if (item.FullPath.ToLowerInvariant() == lowerFullName)
+                if (item.FullPath.Equals(fullName, StringComparison.InvariantCultureIgnoreCase))
                     return item;
             }
 
             // then directories recursively
-            foreach (var item in parent.Files.Where(pi => !pi.IsFile))
-            {
+            foreach (var item in parent.Files.Where(pi => pi.IsFolder))
+            {                
+                if (item.FullPath.Equals(fullName,StringComparison.InvariantCultureIgnoreCase))
+                    return item;
+
                 if (item.IsFolder && item.Files != null && item.Files.Count > 0)
 	            {
 	                var childItem = FindPathItemByFilename(item, fullName);

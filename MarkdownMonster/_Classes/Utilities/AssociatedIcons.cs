@@ -18,7 +18,7 @@ namespace MarkdownMonster.Utilities
     /// <summary>
     /// Helper class that allows retrieving of associated icons for given file types.
     /// This class caches files by extensions and returns an image source or a default
-    /// image source for unknown files.    
+    /// image source for unknown files.
     /// </summary>
     public class AssociatedIcons
     {
@@ -78,7 +78,7 @@ namespace MarkdownMonster.Utilities
 
             try
             {
-                var imagePath = Path.Combine(Environment.CurrentDirectory, "Editor", "fileicons", imageKey + ".png");
+                var imagePath = Path.Combine(App.InitialStartDirectory, "Editor", "fileicons", imageKey + ".png");
                 if (File.Exists(imagePath))
                     icon = new BitmapImage(new Uri(imagePath));
                 else
@@ -99,16 +99,16 @@ namespace MarkdownMonster.Utilities
         {
             if (string.IsNullOrEmpty(doctype))
                 return DefaultIcon;
-            
+
             var kv = IconUtilities.ExtensionToImageMappings.FirstOrDefault(kval=> kval.Value.Equals(doctype,StringComparison.InvariantCultureIgnoreCase));
             if (kv.Key == null)
                 return DefaultIcon;
 
-         
+
             ImageSource icon = null;
             try
             {
-                var imagePath = Path.Combine(Environment.CurrentDirectory, "Editor", "fileicons", doctype + ".png");
+                var imagePath = Path.Combine(App.InitialStartDirectory, "Editor", "fileicons", doctype + ".png");
                 if (File.Exists(imagePath))
                     icon = new BitmapImage(new Uri(imagePath));
                 else
@@ -162,10 +162,11 @@ namespace MarkdownMonster.Utilities
             {"favicon.ico", "favicon"},
             {"folder.folder", "folder"}, // special case
             {"folder.openfolder", "folder-open"}, // special case
-            {"kavadocstopic.md", "kavadocs"},
-            {"_toc.json", "kavadocs" },
             {"untitled", "md"},
 
+            //{"kavadocstopic.md", "kavadocs"},
+            {"_kavadocs.json", "kavadocs" },
+            { "_toc.json", "kavadocs" },
 
             // special doc type
             {"kavadocs","kavadocs" },
@@ -184,6 +185,7 @@ namespace MarkdownMonster.Utilities
             {".md", "md"},
             {".markdown", "md"},
             {".mdcrypt", "md"},
+            {".mdproj", "mdproj" },
 
             // .NET
             {".cs", "csharp"},
@@ -265,6 +267,7 @@ namespace MarkdownMonster.Utilities
             // Configuration
             {".config", "config"},
             {".manifest", "config"},
+            {".dotsettings", "config" },
             {".conf", "config"},
             {".appx", "config"},
             {".yaml", "yaml"},

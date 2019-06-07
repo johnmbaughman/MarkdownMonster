@@ -1,15 +1,15 @@
 ﻿#region License
 /*
  **************************************************************
- *  Author: Rick Strahl 
+ *  Author: Rick Strahl
  *          © West Wind Technologies, 2016
  *          http://www.west-wind.com/
- * 
+ *
  * Created: 04/28/2016
  *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
  * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -18,7 +18,7 @@
  * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
- **************************************************************  
+ **************************************************************
 */
 #endregion
 
@@ -40,7 +40,7 @@ namespace MarkdownMonster
     /// as well as in various addins. Similar behavior and hookup, but doesn't
     /// include all the Markdown parsing features and uses a separate template
     /// that is simpler and less resource intensive.
-    /// 
+    ///
     /// If you need to use a code editor as part of an Addin this is the class
     /// to use. For a usage example, see the PasteCode.xaml form and code behind.
     /// </summary>
@@ -49,7 +49,8 @@ namespace MarkdownMonster
     {
         private WebBrowser WebBrowser;
 
-        public dynamic AceEditor;
+        
+        public AceEditorInterop AceEditor { get; set; }
 
         string InitialValue { get; set; }
 
@@ -58,7 +59,7 @@ namespace MarkdownMonster
         public string CurrentText { get; set; }
 
         public string EditorSyntax { get; set; } = "markdown";
-               
+
 
 
         public MarkdownEditorSimple(WebBrowser wb, string initialValue = null, string editorSyntax = "markdown")
@@ -67,9 +68,9 @@ namespace MarkdownMonster
 
             WebBrowser = wb;
             wb.Visibility = Visibility.Hidden;
-            
+
             wb.LoadCompleted += OnDocumentCompleted;
-            string path = System.IO.Path.Combine(Environment.CurrentDirectory, "Editor\\editorSimple.htm");
+            string path = System.IO.Path.Combine(App.InitialStartDirectory, "Editor\\editorSimple.htm");
             wb.Navigate("file:///" + path);
 
             InitialValue = initialValue;
@@ -79,22 +80,17 @@ namespace MarkdownMonster
         {
             if (AceEditor == null)
             {
-                // Get the JavaScript Ace Editor Instance
-                dynamic doc = WebBrowser.Document;
-                var window = doc.parentWindow;
-
                 try
                 {
-                    AceEditor = window.initializeinterop(this);
+                    // Get the JavaScript Ace Editor Instance
+                    var inst = WebBrowser.InvokeScript("initializeinterop", this);
+                    AceEditor = new AceEditorInterop(inst);
                 }
                 catch (Exception ex)
                 {
                     mmApp.Log($"Editor failed to load initializeinterop {e.Uri}", ex);
                     //throw;
                 }
-
-
-                AceEditor?.setlanguage("markdown");
 
                 WindowUtilities.DoEvents();
 
@@ -105,7 +101,7 @@ namespace MarkdownMonster
                     SetMarkdown(InitialValue);
 
                 if (EditorSyntax != "markdown")
-                    AceEditor?.setlanguage(EditorSyntax);
+                    AceEditor?.SetLanguage(EditorSyntax);
 
             }
         }
@@ -129,7 +125,7 @@ namespace MarkdownMonster
             {
                 if (position == null)
                     position = -2; // keep position
-                AceEditor.setvalue(markdown, position);
+                AceEditor.SetValue(markdown,position,false);
             }
         }
 
@@ -142,7 +138,7 @@ namespace MarkdownMonster
             if (AceEditor == null)
                 return "";
 
-            CurrentText = AceEditor.getvalue(false);
+            CurrentText = AceEditor.GetValue();
             return CurrentText;
 
         }
@@ -152,13 +148,13 @@ namespace MarkdownMonster
         /// </summary>
         public void SetEditorFocus()
         {
-            AceEditor?.setfocus(true);         
+            AceEditor?.SetFocus();
         }
 
 
         /// <summary>
-        /// Pastes text into the editor at the current 
-        /// insertion/selection point. Replaces any 
+        /// Pastes text into the editor at the current
+        /// insertion/selection point. Replaces any
         /// selected text.
         /// </summary>
         /// <param name="text"></param>
@@ -167,7 +163,7 @@ namespace MarkdownMonster
             if (AceEditor == null)
                 return;
 
-            AceEditor.setselection(text);
+            AceEditor.SetSelection(text);
         }
 
         /// <summary>
@@ -189,11 +185,11 @@ namespace MarkdownMonster
             if (AceEditor == null)
                 return 0;
 
-            object fontsize = AceEditor.getfontsize(false);
+            object fontsize = AceEditor.Invoke("getFontSize", false);
             if (fontsize == null || !(fontsize is double || fontsize is int))
                 return 0;
 
-            // If we have a fontsize, force the zoom level to 100% 
+            // If we have a fontsize, force the zoom level to 100%
             // The font-size has been adjusted to reflect the zoom percentage
             var wb = (dynamic)WebBrowser.GetType().GetField("_axIWebBrowser2",
                       BindingFlags.Instance | BindingFlags.NonPublic)
@@ -210,7 +206,7 @@ namespace MarkdownMonster
         /// <returns></returns>
         public string GetSelection()
         {
-            return AceEditor?.getselection(false);
+            return AceEditor?.GetSelection();
         }
 
         public int GetLineNumber()
@@ -218,7 +214,7 @@ namespace MarkdownMonster
             if (AceEditor == null)
                 return -1;
 
-            int lineNo = AceEditor.getLineNumber(false);
+            int lineNo = AceEditor.GetLineNumber();
             return lineNo;
         }
 
@@ -226,12 +222,17 @@ namespace MarkdownMonster
         {
             if (AceEditor == null)
                 return;
-            AceEditor.gotoLine(line);
+            AceEditor.GotoLine(line,false, false);
         }
 
         public void SetEditorSyntax(string syntax = "markdown")
         {
-            AceEditor?.setlanguage(syntax);
+            AceEditor?.SetLanguage(syntax);
+        }
+
+        public void ResizeWindow()
+        {
+            // nothing to do at the moment
         }
 
         /// <summary>
@@ -243,7 +244,7 @@ namespace MarkdownMonster
         {
             if (AceEditor == null)
                 return;
-            
+
             try
             {
                 // determine if we want to rescale the editor fontsize
@@ -260,20 +261,13 @@ namespace MarkdownMonster
                 }
                 catch { }
 
-                AceEditor.settheme(
-                        mmApp.Configuration.EditorTheme,
-                        mmApp.Configuration.Editor.Font,
-                        mmApp.Configuration.Editor.FontSize * dpiRatio,
-                        mmApp.Configuration.Editor.WrapText,
-                        mmApp.Configuration.Editor.HighlightActiveLine,
-                        mmApp.Configuration.Editor.ShowLineNumbers,
-                        mmApp.Configuration.Editor.KeyboardHandler);
+                AceEditor.SetEditorStyling();
 
                 if (EditorSyntax == "markdown" || this.EditorSyntax == "text")
-                    AceEditor.enablespellchecking(!mmApp.Configuration.Editor.EnableSpellcheck, mmApp.Configuration.Editor.Dictionary);
+                    AceEditor.EnableSpellChecking(!mmApp.Configuration.Editor.EnableSpellcheck, mmApp.Configuration.Editor.Dictionary);
                 else
                     // always disable for non-markdown text
-                    AceEditor.enablespellchecking(true, mmApp.Configuration.Editor.Dictionary);
+                    AceEditor.EnableSpellChecking(false,mmApp.Configuration.Editor.Dictionary);
             }
             catch { }
         }

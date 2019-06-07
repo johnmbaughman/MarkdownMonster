@@ -1,18 +1,42 @@
 ﻿using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using FontAwesome.WPF;
+using MarkdownMonster.Annotations;
+using MarkdownMonster.Windows;
+using Westwind.Utilities;
 
 namespace MarkdownMonster
 {
     /// <summary>
     /// Base Command class to allow handling of commands generically
     /// </summary>
-    public class CommandBase : ICommand
+    public class CommandBase : ICommand, INotifyPropertyChanged
     {
         private readonly Action<object, ICommand> _execute;
         private readonly Func<object, ICommand, bool> _canExecute;
         private readonly Func<object, ICommand, bool> _previewExecute;
 
         public string Caption { get; set; }
+        
+        public string PremiumFeatureName { get; set; }
+        public string PremiumFeatureLink { get; set; }
+
+        private string _keyboardShortcut;
+
+        public string KeyboardShortcut
+        {
+            get => _keyboardShortcut;
+            set
+            {
+                if (value == _keyboardShortcut) return;
+                _keyboardShortcut = value;        
+                OnPropertyChanged(nameof(KeyboardShortcut));
+            }
+        }
 
         public string ToolTip { get; set; }
 
@@ -36,6 +60,12 @@ namespace MarkdownMonster
 
         public bool PreviewExecute(object parameter)
         {
+            if (!string.IsNullOrEmpty(PremiumFeatureName) && !UnlockKey.UnlockedPremium)
+            {
+                UnlockKey.ShowPremiumDialog(PremiumFeatureName, PremiumFeatureLink);
+                return false;
+            }
+
             return _previewExecute == null || _previewExecute.Invoke(parameter, this);
         }
 
@@ -61,6 +91,14 @@ namespace MarkdownMonster
                 if (_canExecute != null)
                 CommandManager.RequerySuggested -= value;
             }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        [NotifyPropertyChangedInvocator]
+        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 }

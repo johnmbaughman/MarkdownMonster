@@ -1,5 +1,5 @@
 ﻿<%@ Page Language="C#" %>
-<%@ Register TagPrefix="ww" Namespace="Westwind.Web.MarkdownControl" Assembly="Westwind.Web.MarkdownControl" %>
+<%@ Register TagPrefix="ww" Namespace="Westwind.Web.Markdown" Assembly="Westwind.Web.Markdown" %>
 
 <%
     //WestWindSiteUtils.LogInfo("/WebMonitor/default.aspx");	
@@ -15,9 +15,9 @@
     <meta name="company" content="West Wind Technologies - https://west-wind.com"/>
     <meta name="author" content="Rick Strahl, West Wind Technologies  - https://weblog.west-wind.com"/>
 
-    <link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet" />
     <link href="Css/application.css" rel="stylesheet" />
-    <link href="//netdna.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet" />
+    <link href="https://netdna.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet" />
     
     <style>     
         th {
@@ -107,7 +107,7 @@
 <ww:Markdown runat="server" id="license" NormalizeWhiteSpace="true">
 ## Purchase Markdown Monster
 
-Markdown Monster can be [downloaded](download.aspx) and evaluated for free and we 
+Markdown Monster can be [downloaded](download.aspx) and evaluated for free. We also 
 provide the [source code](https://github.com/RickStrahl/MarkdownMonster) 
 in the open, but a reasonably priced license must be purchased for continued use. 
     
@@ -115,7 +115,7 @@ We offer individual and organizational licences to purchase, as well as **free**
 and certain developer organizations. For more licensing information, please check out 
 our [Licensing Page](download.aspx#License).
     
-Thank you for playing fair.
+Thanks for playing fair.
 </ww:Markdown>
             
             <hr />
@@ -131,11 +131,11 @@ Thank you for playing fair.
                 </thead>
                 <tr>
                     <td>
-                        <a href="download.aspx" class="pull-right btn btn-sm btn-primary">
-                            <i class="fa fa-play-circle"></i>
-                            Try out now
+                        <a href="download.aspx" class="pull-right btn btn-sm btn-success">
+                            <i class="fa fa-download"></i>
+                            Download
                         </a>
-                        <a href="download.aspx">Markdown Monster Trial</a><br/>
+                        <a href="download.aspx">Markdown Monster Evaluation</a><br/>
                         <small>(for checking out Markdown Monster features)</small>
                     </td>
                     <td class="price">
@@ -154,7 +154,7 @@ Thank you for playing fair.
                         <small>Single User License</small>
                     </td>
                     <td class="price">                                                
-                        $39                        
+                        $49                        
                     </td>
                 </tr>
            
@@ -170,7 +170,7 @@ Thank you for playing fair.
                         <small>5 Users</small>
                     </td>
                     <td class="price">                                                
-                        $169                        
+                        $199                        
                     </td>
                 </tr>
                 <tr>
@@ -185,9 +185,25 @@ Thank you for playing fair.
                         <small>10 Users</small>
                     </td>
                     <td class="price">                                                
-                        $299                       
+                        $379                       
                     </td>
                 </tr>
+                <tr>
+                    <td>
+                        <a href="https://store.west-wind.com/product/order/markdown_monster_25user" 
+                           class="pull-right btn btn-sm btn-primary" 
+                           title="Buy Markdown Monster 25 User License">
+                            <i class="fa fa-credit-card"></i>
+                            Buy
+                        </a>
+                        <a href="https://store.west-wind.com/product/order/markdown_monster_25user">Markdown Monster 25 User License</a><br/>
+                        <small>10 Users</small>
+                    </td>
+                    <td class="price">                                                
+                        $999                       
+                    </td>
+                </tr>
+                
                 <tr>
                     <td>
                         <a href="https://store.west-wind.com/product/markdown_monster_site" 
@@ -201,7 +217,7 @@ Thank you for playing fair.
                         <small>Site license that can be used by any number of users within a single organization.</small>                       
                     </td>
                     <td class="price">                                                
-                        $899                        
+                        $1,799                        
                     </td>
                 </tr>
                 

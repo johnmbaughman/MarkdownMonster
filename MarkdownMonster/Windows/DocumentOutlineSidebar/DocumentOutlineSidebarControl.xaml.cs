@@ -1,19 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using MarkdownMonster.Windows.DocumentOutlineSidebar;
 using Westwind.Utilities;
 
@@ -33,53 +22,57 @@ namespace MarkdownMonster.Windows
         /// </summary>
         public DateTime IgnoreSelection { get; set; }
 
+
         public DocumentOutlineSidebarControl()
         {
             InitializeComponent();
-            Loaded += DocumentOutlineSidebarControl_Loaded;            
+            Loaded += DocumentOutlineSidebarControl_Loaded;
         }
 
         private void DocumentOutlineSidebarControl_Loaded(object sender, RoutedEventArgs e)
         {
             Model = new DocumentOutlineModel();
-            DataContext = Model;            
+            DataContext = Model;
         }
 
-      
         /// <summary>
         /// Refreshes the document outline if if it is visible
         /// and 
         /// </summary>
         public void RefreshOutline(int editorLineNumber = -1)
-        {            
+        {
+            if (IgnoreSelection > DateTime.UtcNow.AddMilliseconds(-850))
+                return;
+            else
+                IgnoreSelection = DateTime.MinValue;
+
             if (Model == null || Model.AppModel == null || Model.Window == null ||
                 !Model.AppModel.Configuration.IsDocumentOutlineVisible) return;
 
             var editor = Model.AppModel.ActiveEditor;
             if (editor == null || editor.EditorSyntax != "markdown")
             {
-                Model.Window.TabDocumentOutline.Visibility =Visibility.Collapsed;
+                Model.Window.TabDocumentOutline.Visibility = Visibility.Collapsed;
                 Model.DocumentOutline = null;
 
-                if(Model.Window.SidebarContainer.SelectedItem == Model.Window.TabDocumentOutline)
+                if (Model.Window.SidebarContainer.SelectedItem == Model.Window.TabDocumentOutline)
                     Model.Window.SidebarContainer.SelectedItem = Model.Window.TabFolderBrowser;
-                
+
                 return;
             }
 
-            
             // make the tab visible
             Model.Window.TabDocumentOutline.Visibility = Visibility.Visible;
             Visibility = Visibility.Visible;
 
-            // if not selected - don't update
+            // if we're not selected - don't update the outline
             if (Model.Window.SidebarContainer.SelectedItem != Model.Window.TabDocumentOutline)
                 return;
 
             int line = editorLineNumber;
             if (line < 0)
                 line = editor.GetLineNumber();
-            
+
             var outline = Model.CreateDocumentOutline(editor.MarkdownDocument.CurrentText);
             if (outline == null)
             {
@@ -111,7 +104,7 @@ namespace MarkdownMonster.Windows
             if (selectedItem != null)
             {
                 IgnoreSelection = DateTime.UtcNow;
-                if(selectedItem != ListOutline.SelectedItem)
+                if (selectedItem != ListOutline.SelectedItem)
                     ListOutline.SelectedItem = selectedItem;
 
                 ListOutline.ScrollIntoView(selectedItem);
@@ -148,17 +141,11 @@ namespace MarkdownMonster.Windows
 
             if (doc.CurrentText.Contains(STR_StartDocumentOutline))
             {
-                if (MessageBox.Show(@"This document already contains a Document Outline/TOC.
-Do you want to replace the existing outline?
-", "Create Document Outline", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes) !=
-                    MessageBoxResult.Yes)
-                    return;
-
                 var oldToc = StringUtils.ExtractString(markdown, STR_StartDocumentOutline, STR_EndDocumentOutline,
                     returnDelimiters: true);
 
                 //editor.ReplaceContent(markdown);
-                editor.FindAndReplaceText(oldToc,"");
+                editor.FindAndReplaceText(oldToc, "");
             }
 
 
@@ -166,7 +153,7 @@ Do you want to replace the existing outline?
 
             if (md != null)
             {
-                md = STR_StartDocumentOutline + "\r\n" + md.TrimEnd() + "\r\n" + STR_EndDocumentOutline;
+                md = STR_StartDocumentOutline + "\r\n\r\n" + md.TrimEnd() + "\r\n\r\n" + STR_EndDocumentOutline;
                 editor.SetSelectionAndFocus(md);
             }
             else
@@ -174,12 +161,13 @@ Do you want to replace the existing outline?
         }
 
         private void ListOutlineItem_MouseUp(object sender, MouseButtonEventArgs e)
-        {         
-            var selected = ListOutline.SelectedItem as HeaderItem;            
+        {
+            var selected = ListOutline.SelectedItem as HeaderItem;
             if (selected == null || Model.AppModel.ActiveEditor == null)
                 return;
 
-            Model.AppModel.ActiveEditor.GotoLine(selected.Line - 2, noRefresh: true);           
+            IgnoreSelection = DateTime.UtcNow;  // prevent editor navigating outline again
+            Model.AppModel.ActiveEditor.GotoLine(selected.Line - 2, noRefresh: false);  // refresh the preview
         }
 
         private void TextBlock_KeyDown(object sender, KeyEventArgs e)
@@ -195,10 +183,10 @@ Do you want to replace the existing outline?
                 return;
 
             if (ClipboardHelper.SetText("#" + selected.LinkId))
-                Model.Window.ShowStatus($"Pasted id to clipboard: #{selected.LinkId}");
+                Model.Window.ShowStatusSuccess($"Pasted id to clipboard: #{selected.LinkId}");
         }
 
-    
+
         private void TextMaxIndentLevel_TextChanged(object sender, TextChangedEventArgs e)
         {
             RefreshOutline();

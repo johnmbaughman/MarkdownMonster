@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -7,6 +9,7 @@ using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media.Imaging;
 using LibGit2Sharp;
+using MarkdownMonster.Utilities;
 using Westwind.Utilities;
 
 namespace MarkdownMonster.Windows
@@ -244,6 +247,59 @@ namespace MarkdownMonster.Windows
         }
     }
 
+    public class FileIconFromPathConverter : IValueConverter
+    {
+        private AssociatedIcons icons = new AssociatedIcons();
+
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {            
+            string path = value as string;
+            if (string.IsNullOrEmpty(path))
+                return AssociatedIcons.DefaultIcon;
+
+            return icons.GetIconFromFile(path);
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public  class ItemSourceCountFilterConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            var val = value as IEnumerable;
+            if (val == null)
+                return value;
+
+            int take = 10;
+            if (parameter != null)
+                int.TryParse(parameter as string, out take);
+
+            
+            if (take < 1)
+                return value;
+            var list = new List<object>();
+
+            int count = 0;
+            foreach (var li in val)
+            {
+                count++;
+                if(count > take)
+                    break;
+                list.Add(li);
+            }
+            return list;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
     internal class FontWeightFromBoolConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -337,9 +393,8 @@ namespace MarkdownMonster.Windows
             if (!string.IsNullOrEmpty(val))
             {
                 val = ((string) value).ToLower();
-                    
-                BitmapImage bi;
-                if (CachedBitmapImages.TryGetValue(val, out bi))
+                                     
+                if (CachedBitmapImages.TryGetValue(val, out BitmapImage bi))
                     return bi;
 
                 try
@@ -364,7 +419,7 @@ namespace MarkdownMonster.Windows
 
         public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
         {
-            throw new NotImplementedException("Two way conversion is not supported.");
+            throw new NotImplementedException("UriToCachedImageConverter: Two way conversion is not supported.");
         }
     }
 

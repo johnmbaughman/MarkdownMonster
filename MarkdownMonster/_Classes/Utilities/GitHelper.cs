@@ -11,7 +11,6 @@ using System.Text;
 using System.Threading.Tasks;
 using LibGit2Sharp;
 using MarkdownMonster.Annotations;
-using Microsoft.Alm.Authentication;
 using Westwind.Utilities;
 using CompareOptions = LibGit2Sharp.CompareOptions;
 
@@ -24,7 +23,7 @@ namespace MarkdownMonster.Utilities
     {
         public Repository Repository { get; set; }
 
-        public Func<string,bool> CloneProgress { get; set; }
+        public Func<string, bool> CloneProgress { get; set; }
 
         /// <summary>
         /// Opens a repository and stores it in the Repository
@@ -46,7 +45,7 @@ namespace MarkdownMonster.Utilities
                 Repository = new Repository(repoPath);
                 return Repository;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 SetError(ex);
             }
@@ -90,81 +89,81 @@ namespace MarkdownMonster.Utilities
             {
                 var branch = repo.Head.FriendlyName;
                 //var relFile = FileUtils.GetRelativePath(file, repo.Info.WorkingDirectory);
-                repo.CheckoutPaths(branch, new[] { file }, new CheckoutOptions { CheckoutModifiers = CheckoutModifiers.Force});
+                repo.CheckoutPaths(branch, new[] { file }, new CheckoutOptions { CheckoutModifiers = CheckoutModifiers.Force });
             }
         }
 
         #endregion
 
-        /// <summary>
-        /// Clones a repository
-        /// </summary>
-        /// <param name="gitUrl"></param>
-        /// <param name="localPath"></param>
-        /// <param name="useGitCredentialManager"></param>
-        /// <param name="username"></param>
-        /// <param name="password"></param>
-        /// <returns></returns>
-        public bool CloneRepository(string gitUrl,
-                string localPath,
-                bool useGitCredentialManager = false,
-                string username = null,
-                string password = null,
-                string branch = "master"
-            )
-        {            
-            try
-            {
-                var options = new CloneOptions
-                {
-                    Checkout = true,
-                    BranchName = branch
-                };
+        ///// <summary>
+        ///// Clones a repository
+        ///// </summary>
+        ///// <param name="gitUrl"></param>
+        ///// <param name="localPath"></param>
+        ///// <param name="useGitCredentialManager"></param>
+        ///// <param name="username"></param>
+        ///// <param name="password"></param>
+        ///// <returns></returns>
+        //public bool CloneRepository(string gitUrl,
+        //        string localPath,
+        //        bool useGitCredentialManager = false,
+        //        string username = null,
+        //        string password = null,
+        //        string branch = "master"
+        //    )
+        //{
+        //    try
+        //    {
+        //        var options = new CloneOptions
+        //        {
+        //            Checkout = true,
+        //            BranchName = branch
+        //        };
 
 
-                if (CloneProgress != null)
-                    options.OnProgress = new LibGit2Sharp.Handlers.ProgressHandler(CloneProgress);
+        //        if (CloneProgress != null)
+        //            options.OnProgress = new LibGit2Sharp.Handlers.ProgressHandler(CloneProgress);
 
-                if (useGitCredentialManager)
-                {
+        //        if (useGitCredentialManager)
+        //        {
 
-                        var creds = GetGitCredentials(gitUrl);
+        //            var creds = GetGitCredentials(gitUrl);
 
-                        if (creds?.Username != null)
-                        {
-                            options.CredentialsProvider = (_url, _user, _cred) => new UsernamePasswordCredentials()
-                            {
-                                Username = creds.Username,
-                                Password = creds.Password
-                            };
-                        }
-                        else
-                        {
-                        // oAuth flow then set credentials
+        //            if (creds?.Username != null)
+        //            {
+        //                options.CredentialsProvider = (_url, _user, _cred) => new UsernamePasswordCredentials()
+        //                {
+        //                    Username = creds.Username,
+        //                    Password = creds.Password
+        //                };
+        //            }
+        //            else
+        //            {
+        //                // oAuth flow then set credentials
 
 
-                    }
-                }
-                else if(!string.IsNullOrEmpty(username))
-                {
+        //            }
+        //        }
+        //        else if (!string.IsNullOrEmpty(username))
+        //        {
 
-                    options.CredentialsProvider = (_url, _user, _cred) => new UsernamePasswordCredentials()
-                    {
-                        Username = username,
-                        Password = password
-                    };
-                }
+        //            options.CredentialsProvider = (_url, _user, _cred) => new UsernamePasswordCredentials()
+        //            {
+        //                Username = username,
+        //                Password = password
+        //            };
+        //        }
 
-                Repository.Clone(gitUrl, localPath,options);
-            }
-            catch (Exception ex)
-            {
-                SetError(ex);
-                return false;
-            }
+        //        Repository.Clone(gitUrl, localPath, options);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        SetError(ex);
+        //        return false;
+        //    }
 
-            return true;
-        }
+        //    return true;
+        //}
 
 
         /// <summary>
@@ -205,14 +204,14 @@ namespace MarkdownMonster.Utilities
         /// Creates a new repository which is the equivalent of a Git Init.
         /// </summary>
         /// <remarks>Note until you make your first commit there's no active branch.</remarks>
-        /// <param name="path">Path where to create a repository. Path should not exist yet.</param>        
+        /// <param name="path">Path where to create a repository. Path should not exist yet.</param>
         /// <param name="gitIgnoreText">Text for the .gitignore file in the Git root</param>
         /// <returns></returns>
         public bool CreateRepository(string path, string gitIgnoreText = null)
         {
             try
             {
-                Repository.Init(path, false);                
+                Repository.Init(path, false);
             }
             catch (Exception ex)
             {
@@ -224,7 +223,7 @@ namespace MarkdownMonster.Utilities
             if (!File.Exists(gitIgnoreFile))
             {
                 if (string.IsNullOrEmpty(gitIgnoreText))
-                    gitIgnoreText = @"*.saved.md\r\n*.bak\r\n*.tmp";
+                    gitIgnoreText = "*.saved.md\r\n*.bak\r\n*.tmp";
 
                 File.WriteAllText(gitIgnoreFile, gitIgnoreText);
             }
@@ -248,7 +247,50 @@ namespace MarkdownMonster.Utilities
                 var gitBranch = Commands.Checkout(repo, branch);
                 if (gitBranch == null)
                 {
-                    SetError($"Couldn't change out branch {branch}.");
+                    SetError($"Couldn't checkout branch {branch}.");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                SetError($"Couldn't checkout branch {branch}: {ex.Message}");
+                return false;
+            }
+
+
+            return true;
+        }
+
+
+        /// <summary>
+        /// Creates a new branch and optionally checks it out
+        /// </summary>
+        /// <param name="branch"></param>
+        /// <param name="path"></param>
+        /// <param name="checkoutBranch"></param>
+        /// <returns></returns>
+        public bool CreateBranch(string branch, string path, bool checkoutBranch = true)
+        {
+            var repo = OpenRepository(path);
+            if (repo == null)
+                return false;
+
+            var newBranch = repo.CreateBranch(branch);
+            if (newBranch == null)
+            {
+                SetError($"Couldn't create branch {branch}.");
+                return false;
+            }
+
+            if (!checkoutBranch)
+                return true;
+
+            try
+            {
+                var gitBranch = Commands.Checkout(repo, branch);
+                if (gitBranch == null)
+                {
+                    SetError($"Couldn't checkout to branch {branch}.");
                     return false;
                 }
             }
@@ -258,9 +300,21 @@ namespace MarkdownMonster.Utilities
                 return false;
             }
 
-
             return true;
         }
+
+        /// <summary>
+        /// Retrieves a listing of Branches
+        /// </summary>
+        /// <param name="path"></param>
+        /// <returns></returns>
+        public BranchCollection GetBranches(string path)
+        {
+            var repo = OpenRepository(path);
+            return repo.Branches;
+
+        }
+
 
         /// <summary>
         /// Adds a remote to the current Repository.
@@ -278,11 +332,11 @@ namespace MarkdownMonster.Utilities
                 return false;
             }
 
-            string origPath = Environment.CurrentDirectory;
+            string origPath = App.InitialStartDirectory;
             try
             {
-                //git remote add origin https://github.com/RickStrahl/Test.git                
-                Repository.Network.Remotes.Add(remoteName, githubUrl);                
+                //git remote add origin https://github.com/RickStrahl/Test.git
+                Repository.Network.Remotes.Add(remoteName, githubUrl);
             }
             catch (Exception ex)
             {
@@ -294,7 +348,7 @@ namespace MarkdownMonster.Utilities
             var branch = Repository.Head?.FriendlyName;
             if (!string.IsNullOrEmpty(branch))
                 ExecuteGitCommand("branch --set-upstream " + Repository.Head.FriendlyName);
-                        
+
             return true;
             //if (Repository == null)
             //{
@@ -302,11 +356,11 @@ namespace MarkdownMonster.Utilities
             //    return false;
             //}
 
-            //string origPath = Environment.CurrentDirectory;
+            //string origPath = App.InitialStartDirectory;
             //try
             //{
             //    //git remote add origin https://github.com/RickStrahl/Test.git
-            //    Repository.Network.Remotes.Add(remoteName, githubUrl);                
+            //    Repository.Network.Remotes.Add(remoteName, githubUrl);
             //}
             //catch (Exception ex)
             //{
@@ -317,20 +371,39 @@ namespace MarkdownMonster.Utilities
             //return true;
         }
 
-        public Credential GetGitCredentials(string gitUrl)
+
+        /// <summary>
+        /// Retrieves the active repository Remote URL
+        /// </summary>
+        /// <returns></returns>
+        public string GetActiveRemoteUrl()
         {
-            var secrets = new SecretStore("git");
+            if (Repository == null)
+            {
+                SetError("Repository has to be open before retrieving a Remote name. Call OpenRepository first.");
+                return null;
+            }
 
-            var auth = new BasicAuthentication(secrets);
-            var uri = new Uri(gitUrl);
-            var url = uri.Scheme + "://" + uri.Authority;
-            var creds = auth.GetCredentials(new TargetUri(url));
+            var repoUrl = Repository.Network?.Remotes.FirstOrDefault()?.Url;
+            if (repoUrl == null)
+                SetError("No remotes in this repository.");
 
-            //if (creds == null)
-                // TODO: Prompt for
-
-            return creds;
+            return repoUrl;
         }
+        //public Credential GetGitCredentials(string gitUrl)
+        //{
+        //    var secrets = new SecretStore("git");
+
+        //    var auth = new BasicAuthentication(secrets);
+        //    var uri = new Uri(gitUrl);
+        //    var url = uri.Scheme + "://" + uri.Authority;
+        //    var creds = auth.GetCredentials(new TargetUri(url));
+
+        //    //if (creds == null)
+        //    // TODO: Prompt for
+
+        //    return creds;
+        //}
 
         public bool Commit(ObservableCollection<RepositoryStatusItem> statusItems, string message, string name, string email, bool ammendPreviousCommit = false)
         {
@@ -367,9 +440,9 @@ namespace MarkdownMonster.Utilities
             try
             {
                 var sig = new Signature(name, email, DateTimeOffset.UtcNow);
-                Repository.Commit(message, sig, sig,new CommitOptions
+                Repository.Commit(message, sig, sig, new CommitOptions
                 {
-                     AmendPreviousCommit = ammendPreviousCommit
+                    AmendPreviousCommit = ammendPreviousCommit
                 });
             }
             catch (EmptyCommitException)
@@ -384,6 +457,45 @@ namespace MarkdownMonster.Utilities
 
             return true;
         }
+
+
+        /// <summary>
+        /// Merges changes from a branch into the current HEAD of the repository
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="mergeBranch"></param>
+        /// <param name="name"></param>
+        /// <param name="email"></param>
+        /// <returns></returns>
+        public bool Merge(string path, string mergeBranch, string name, string email)
+        {
+
+            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(email))
+            {
+                SetError("Commit failed: Git requires a commit name and email address.");
+                return false;
+            }
+
+            var repo = OpenRepository(path);
+            if (repo == null)
+                return false;
+
+            try
+            {
+                var sig = new Signature(name, email, DateTimeOffset.UtcNow);
+
+                var branch = Repository.Branches[mergeBranch];
+                Repository.Merge(branch, sig);
+            }
+            catch (Exception ex)
+            {
+                SetError($"Failed to merge {mergeBranch}: {ex.Message}.");
+                return false;
+            }
+
+            return true;
+        }
+
 
         public async Task<bool> PushAsync(string path, string branch = null)
         {
@@ -400,15 +512,15 @@ namespace MarkdownMonster.Utilities
             if (string.IsNullOrEmpty(branch))
             {
                 using (var repo = OpenRepository(path))
-                {                    
+                {
                     branch = repo.Head?.FriendlyName;
                 }
             }
 
-            if (!string.IsNullOrEmpty(branch))            
+            if (!string.IsNullOrEmpty(branch))
                 branch = " -u " + branch;
-            
-            var result = ExecuteGitCommand("push origin" + branch,path, 60000);
+
+            var result = ExecuteGitCommand("push origin" + branch, path, 60000);
             if (result.HasError)
             {
                 SetError("Couldn't push to repository: " + result.Message);
@@ -477,9 +589,9 @@ namespace MarkdownMonster.Utilities
         /// <returns></returns>
         public GitCommandResult ExecuteGitCommand(string arguments,
                                                   string path = null,
-                                                  int timeoutMs=10000,
-                                                  ProcessWindowStyle windowStyle= ProcessWindowStyle.Hidden,
-                                                  Action<object,DataReceivedEventArgs> progress = null)
+                                                  int timeoutMs = 10000,
+                                                  ProcessWindowStyle windowStyle = ProcessWindowStyle.Hidden,
+                                                  Action<object, DataReceivedEventArgs> progress = null)
         {
             Process process;
             var result = new GitCommandResult();
@@ -559,7 +671,7 @@ namespace MarkdownMonster.Utilities
                             if (result.ExitCode == 0)
                                 result.Message = "Process timed out.";
                         }
-                        else if(result.HasError)
+                        else if (result.HasError)
                             result.Message = result.Output;
 
                         if (oldPath != null)
@@ -578,7 +690,7 @@ namespace MarkdownMonster.Utilities
                 result.Message = ex.Message;
             }
 
-            if(oldPath != null)
+            if (oldPath != null)
                 Directory.SetCurrentDirectory(oldPath);
 
             return result;
@@ -637,11 +749,11 @@ namespace MarkdownMonster.Utilities
             // Delete files older than 5 minutes
             FileUtils.DeleteTimedoutFiles(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "mm_diff_" + "*.*"), 300);
 
-            mmFileUtils.ExecuteProcess(mmApp.Configuration.Git.GitDiffExecutable, $"\"{tempFile}\" \"{filePath}\"");
+            ShellUtils.ExecuteProcess(mmApp.Configuration.Git.GitDiffExecutable, $"\"{tempFile}\" \"{filePath}\"");
 
             return true;
         }
-        
+
 
         public const FileStatus DefaultStatusesToDisplay = FileStatus.ModifiedInIndex | FileStatus.ModifiedInWorkdir |
                                                            FileStatus.NewInIndex | FileStatus.NewInWorkdir |
@@ -681,7 +793,7 @@ namespace MarkdownMonster.Utilities
                 var statusItem = new RepositoryStatusItem
                 {
                     Filename = item.FilePath,
-                    FullPath = Path.Combine(Repository.Info.WorkingDirectory,item.FilePath),
+                    FullPath = Path.Combine(Repository.Info.WorkingDirectory, item.FilePath),
                     FileStatus = item.State,
                 };
 
@@ -697,7 +809,7 @@ namespace MarkdownMonster.Utilities
                     .OrderByDescending(si => si.Selected)
                     .ThenBy(si => Path.GetDirectoryName(si.Filename))
                     .ThenBy(si => Path.GetFileName(si.Filename)));
-            
+
             return statusItems;
         }
 
@@ -775,8 +887,8 @@ namespace MarkdownMonster.Utilities
             var gitIgnoreFile = Path.Combine(repo.Info.WorkingDirectory, ".gitignore");
 
             string content = string.Empty;
-            if(File.Exists(gitIgnoreFile))
-             content = File.ReadAllText(gitIgnoreFile);
+            if (File.Exists(gitIgnoreFile))
+                content = File.ReadAllText(gitIgnoreFile);
 
             var relPath = FileUtils.GetRelativePath(filePath, repo.Info.WorkingDirectory).Replace("\\", "/");
 
@@ -790,6 +902,69 @@ namespace MarkdownMonster.Utilities
 
             return true;
         }
+
+
+        /// <summary>
+        /// Retrieves Username and Email as a two item array from .gitconfig
+        /// file if it exists.
+        /// </summary>
+        /// <returns>
+        /// Two Item String Array. Items: 0 - Username, 1 - Email
+        /// </returns>
+        public static string[] GetGitNameAndEmailFromGitConfig()
+        {
+            string email = string.Empty;
+            string username = string.Empty;
+
+            var gitignoreFile = Path.Combine(Environment.GetEnvironmentVariable("userprofile"), ".gitconfig");
+            if (File.Exists(gitignoreFile))
+            {
+                var fileText = File.ReadAllText(gitignoreFile);
+
+                username = StringUtils.ExtractString(fileText, "name = ", "\n");
+                email = StringUtils.ExtractString(fileText, "email = ", "\n");
+            }
+
+            return new string[2] { username.Trim(), email.Trim() };
+        }
+        #endregion
+
+        #region Git Locations and Installation
+        /// <summary>
+        /// Checks to see if Git is installed on the local machine
+        /// </summary>
+        /// <returns></returns>
+        public static string FindGitExecutable()
+        {
+            string exe = Path.Combine(Environment.GetEnvironmentVariable("Program6432"), "Git\\bin\\git.exe");
+            if (!File.Exists(exe))
+                return exe;
+
+            exe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                "Git\\bin\\git.exe");
+            if (!File.Exists(exe))
+                return exe;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Determines whether Git is installed
+        /// </summary>
+        /// <returns></returns>
+        public static bool IsGitInstalled()
+        {
+            return FindGitExecutable() != null;
+        }
+
+        /// <summary>
+        /// Navigates browser to the Git Web download location
+        /// </summary>
+        public static void GotoGitDownload()
+        {
+            ShellUtils.GoUrl("https://git-scm.com/download/win");
+        }
+
         #endregion
 
         #region Error Handling
@@ -831,7 +1006,7 @@ namespace MarkdownMonster.Utilities
         }
         #endregion
     }
-    
+
     [DebuggerVisualizer("{Message}")]
     public class GitCommandResult
     {
@@ -848,7 +1023,7 @@ namespace MarkdownMonster.Utilities
         public string Filename { get; set; }
 
         public string FullPath { get; set; }
-        
+
 
         public FileStatus FileStatus
         {

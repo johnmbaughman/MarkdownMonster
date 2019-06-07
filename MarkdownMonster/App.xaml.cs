@@ -23,7 +23,6 @@
 #endregion
 
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -37,7 +36,7 @@ using MahApps.Metro;
 using MahApps.Metro.Controls;
 using MarkdownMonster.AddIns;
 using Westwind.Utilities;
-using Westwind.Utilities.Configuration;
+
 
 namespace MarkdownMonster
 {
@@ -46,17 +45,30 @@ namespace MarkdownMonster
     /// </summary>
     public partial class App : System.Windows.Application
     {
-        public Action AddinsLoadingCompleted;
-
         public static Mutex Mutex { get; set; }
 
-        public static string InitialStartDirectory;
+        public static bool IsPortableMode { get; set; }
 
+
+        public static string InitialStartDirectory { get; }
+
+        public static bool StartInPresentationMode { get; set; }
+
+        public static bool ForceNewWindow { get; set; }
+
+        public static bool NoSplash { get; set; }
+
+        /// <summary>
+        /// Startup Command Arguments without the initial full
+        /// command line. arg[0] is the first parameter on the
+        /// command line.
+        /// </summary>
         public static string[] CommandArgs { get; set; }
+
 
         // Flag to indicate that app shouldn't start
         // Need this so OnStartup doesn't fire
-        static bool _noStart = false;
+        internal static bool _noStart = false;
 
 
         static App()
@@ -75,28 +87,15 @@ namespace MarkdownMonster
         {
             // Get just the command arguments
             CommandArgs = Environment.GetCommandLineArgs().Skip(1).ToArray();
-
             if (CommandArgs.Length > 0)
             {
-                if (  (CommandArgs[0].ToLower() == "uninstall" || CommandArgs[0].ToLower() == "-uninstall"))
-                {
-                    _noStart = true;
-                    UninstallSettings();
-                    Environment.Exit(0);
-                    return;
-                }
-
-                if ((CommandArgs[0].ToLower() == "reset" || CommandArgs[0].ToLower() == "-reset"))
-                {
-                    // load old config and backup
-                    mmApp.Configuration.Backup();
-                    mmApp.Configuration.Reset(); // forces exit
-                    return;
-                }
+                var processor = new CommandLineProcessor(this);
+                processor.HandleCommandLineArguments();
             }
 
+
             SplashScreen splashScreen = null;
-            if (!mmApp.Configuration.DisableSplashScreen)
+            if (!mmApp.Configuration.DisableSplashScreen && !NoSplash)
             {
                 splashScreen = new SplashScreen("assets/markdownmonstersplash.png");
                 splashScreen.Show(true);
@@ -104,12 +103,14 @@ namespace MarkdownMonster
 
 
             // Singleton launch marshalls subsequent launches to the singleton instance
-			// via named pipes communication
-	        CheckCommandLineForSingletonLaunch(splashScreen);
+            // via named pipes communication
+            if (!ForceNewWindow && mmApp.Configuration.UseSingleWindow)
+                CheckCommandLineForSingletonLaunch(splashScreen);
 
             // We have to manage assembly loading for Addins
-	        AppDomain currentDomain = AppDomain.CurrentDomain;
+            var currentDomain = AppDomain.CurrentDomain;
             currentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
+
 #if !DEBUG
             //AppDomain currentDomain = AppDomain.CurrentDomain;
             //currentDomain.UnhandledException += new UnhandledExceptionEventHandler(GlobalErrorHandler);
@@ -121,19 +122,18 @@ namespace MarkdownMonster
         }
 
 
-
         protected override void OnStartup(StartupEventArgs e)
         {
             if (_noStart)
                 return;
 
-            var dotnetVersion = ComputerInfo.GetDotnetVersion();
-            if (String.Compare(dotnetVersion, "4.6", StringComparison.Ordinal) < 0)
+            var dotnetVersion = MarkdownMonster.Utilities.mmWindowsUtils.GetDotnetVersion();
+            if (string.Compare(dotnetVersion, "4.6.2", StringComparison.Ordinal) < 0)
             {
-                new TaskFactory().StartNew(() => MessageBox.Show("Markdown Monster requires .NET 4.6 or later to run.\r\n\r\n" +
-                                                                 "Please download and install the latest version of .NET version from:\r\n" +
-                                                                 "https://www.microsoft.com/net/download/framework\r\n\r\n" +
-                                                                 "Exiting application and navigating to .NET Runtime Downloads page.",
+                Task.Run(() => MessageBox.Show("Markdown Monster requires .NET 4.6.2 or later to run.\r\n\r\n" +
+                                               "Please download and install the latest version of .NET version from:\r\n" +
+                                               "https://www.microsoft.com/net/download/framework\r\n\r\n" +
+                                               "Exiting application and navigating to .NET Runtime Downloads page.",
                     "Markdown Monster",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning
@@ -144,7 +144,6 @@ namespace MarkdownMonster
                 Environment.Exit(0);
             }
 
-            new TaskFactory().StartNew(LoadAddins);
 
             if (mmApp.Configuration.DisableHardwareAcceleration)
                 RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
@@ -153,34 +152,43 @@ namespace MarkdownMonster
             var dir = Assembly.GetExecutingAssembly().Location;
             Directory.SetCurrentDirectory(Path.GetDirectoryName(dir));
 
+            if (!mmApp.Configuration.DisableAddins)
+                ThreadPool.QueueUserWorkItem(p => LoadAddins());
+
             ThemeCustomizations();
 
-            if (!mmApp.Configuration.DisableAddins)
+            ThreadPool.QueueUserWorkItem(p =>
             {
-                new TaskFactory().StartNew(() =>
-                {
-                    ComputerInfo.EnsureBrowserEmulationEnabled("MarkdownMonster.exe");
-                    ComputerInfo.EnsureSystemPath();
-                    ComputerInfo.EnsureAssociations();
+                mmFileUtils.EnsureBrowserEmulationEnabled("MarkdownMonster.exe");
+                mmFileUtils.EnsureSystemPath();
+                mmFileUtils.EnsureAssociations();
 
-                    if (!Directory.Exists(mmApp.Configuration.InternalCommonFolder))
-                        Directory.CreateDirectory(mmApp.Configuration.InternalCommonFolder);
-                });
-            }
+                if (!Directory.Exists(mmApp.Configuration.InternalCommonFolder))
+                {
+                    Directory.CreateDirectory(mmApp.Configuration.InternalCommonFolder);
+
+
+                }
+            });
+
         }
 
 
 
+
         /// <summary>
-		/// Checks to see if app is already running and if it is pushes
-		/// parameters via NamedPipes to existing running application
-		/// and exits this instance.
-		///
-		/// Otherwise app just continues
-		/// </summary>
-		/// <param name="splashScreen"></param>
-	    private void CheckCommandLineForSingletonLaunch(SplashScreen splashScreen)
+        /// Checks to see if app is already running and if it is pushes
+        /// parameters via NamedPipes to existing running application
+        /// and exits this instance.
+        ///
+        /// Otherwise app just continues
+        /// </summary>
+        /// <param name="splashScreen"></param>
+        private void CheckCommandLineForSingletonLaunch(SplashScreen splashScreen)
         {
+            if (App.ForceNewWindow || !mmApp.Configuration.UseSingleWindow)
+                return;
+
             // fix up the startup path
             string filesToOpen = " ";
             StringBuilder sb = new StringBuilder();
@@ -191,50 +199,36 @@ namespace MarkdownMonster
                 if (string.IsNullOrEmpty(file))
                     continue;
 
-                file = file.TrimEnd('\\');
-                file = Path.GetFullPath(file);
+                if (!file.StartsWith("-"))
+                {
+                    file = file.TrimEnd('\\');
+                    file = Path.GetFullPath(file);
+                }
+
                 sb.AppendLine(file);
 
                 // write fixed up path arguments
                 CommandArgs[i] = file;
             }
+
             filesToOpen = sb.ToString();
-
-
-            if (!mmApp.Configuration.UseSingleWindow)
-                return;
 
             Mutex = new Mutex(true, @"MarkdownMonster", out bool isOnlyInstance);
             if (isOnlyInstance)
-			    return;
+                return;
 
             _noStart = true;
 
-		    var manager = new NamedPipeManager("MarkdownMonster");
-		    manager.Write(filesToOpen);
+            var manager = new NamedPipeManager("MarkdownMonster");
+            manager.Write(filesToOpen);
 
             splashScreen?.Close(TimeSpan.MinValue);
 
-		    // Shut down application
-		    Environment.Exit(0);
-	    }
-
-
-        /// <summary>
-        /// Uninstall registry and configuration settings
-        /// </summary>
-        private void UninstallSettings()
-        {
-            ComputerInfo.EnsureBrowserEmulationEnabled("MarkdownMonster.exe", uninstall: true);
-            ComputerInfo.EnsureSystemPath(uninstall: true);
-            ComputerInfo.EnsureAssociations(uninstall: true);
-
-            Console.WriteLine("Markdown Monster settings uninstalled from registry");
-            MessageBox.Show("Markdown Monster settings uninstalled from registry");
-
-            _noStart = true;
+            // Shut down application
             Environment.Exit(0);
         }
+
+
 
         private Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
         {
@@ -261,7 +255,8 @@ namespace MarkdownMonster
                 return Assembly.LoadFrom(filename);
             }
             catch
-            { }
+            {
+            }
 
             // try load from install addins folder
             string asmFile = FindFileInPath(filename, ".\\Addins");
@@ -272,7 +267,8 @@ namespace MarkdownMonster
                     return Assembly.LoadFrom(asmFile);
                 }
                 catch
-                { }
+                {
+                }
             }
 
             return null;
@@ -295,6 +291,7 @@ namespace MarkdownMonster
                     return fullFile;
 
             }
+
             foreach (var dir in Directory.GetDirectories(path))
             {
                 var file = FindFileInPath(filename, dir);
@@ -305,9 +302,10 @@ namespace MarkdownMonster
             return null;
         }
 
-        private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+        private void App_DispatcherUnhandledException(object sender,
+            System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
         {
-            if (!mmApp.HandleApplicationException(e.Exception as Exception))
+            if (!mmApp.HandleApplicationException(e.Exception as Exception, ApplicationErrorModes.AppDispatcher))
                 Environment.Exit(1);
 
             e.Handled = true;
@@ -316,6 +314,7 @@ namespace MarkdownMonster
 
         public static string UserDataPath { get; internal set; }
         public static string VersionCheckUrl { get; internal set; }
+
 
 
         private void ThemeCustomizations()
@@ -334,27 +333,27 @@ namespace MarkdownMonster
 
                 var dragablzLightStyles = new Uri("Styles/DragablzGeneric.xaml", UriKind.RelativeOrAbsolute);
                 Current.Resources.MergedDictionaries.Add(
-                    new ResourceDictionary() { Source = dragablzLightStyles });
+                    new ResourceDictionary() {Source = dragablzLightStyles});
 
                 resourceUri = new Uri("Styles/MahDarkResources.xaml", UriKind.RelativeOrAbsolute);
                 Current.Resources.MergedDictionaries.Add(
-                    new ResourceDictionary() { Source = resourceUri });
+                    new ResourceDictionary() {Source = resourceUri});
             }
             else
             {
                 var dragablzLightStyles = new Uri("Styles/DragablzGenericLight.xaml", UriKind.RelativeOrAbsolute);
                 Current.Resources.MergedDictionaries.Add(
-                    new ResourceDictionary() { Source = dragablzLightStyles });
+                    new ResourceDictionary() {Source = dragablzLightStyles});
 
                 resourceUri = new Uri("Styles/MahLightResources.xaml", UriKind.RelativeOrAbsolute);
                 Current.Resources.MergedDictionaries.Add(
-                    new ResourceDictionary() { Source = resourceUri });
+                    new ResourceDictionary() {Source = resourceUri});
             }
 
             mmApp.SetTheme(mmApp.Configuration.ApplicationTheme, App.Current.MainWindow as MetroWindow);
         }
 
-        
+
 
         /// <summary>
         /// Loads all addins asynchronously without loading the
@@ -366,13 +365,10 @@ namespace MarkdownMonster
             {
                 AddinManager.Current.LoadAddins(Path.Combine(App.InitialStartDirectory, "AddIns"));
                 AddinManager.Current.LoadAddins(mmApp.Configuration.AddinsFolder);
-
                 AddinManager.Current.AddinsLoadingComplete = true;
-                AddinManager.Current.AddinsLoaded?.Invoke();
-                
 
-                //Model.OnPropertyChanged(nameof(AppModel.MarkdownParserNames));
-                //Model.OnPropertyChanged(nameof(AppModel.MarkdownParserColumnWidth));
+                AddinManager.Current.AddinsLoaded?.Invoke();
+
                 try
                 {
                     AddinManager.Current.RaiseOnApplicationStart();
@@ -387,7 +383,7 @@ namespace MarkdownMonster
                 mmApp.Log("Addin loading failed", ex);
             }
         }
-    }
 
+    }
 
 }

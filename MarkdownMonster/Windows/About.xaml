@@ -22,6 +22,9 @@
             <Label x:Name="VersionLabel" Content="Version 1.0" FontSize="24" FontWeight="Bold"  HorizontalAlignment="Right" Foreground="WhiteSmoke"  Margin="0" />
             <Label x:Name="VersionDateLabel" Content="Jan 01, 2017" FontSize="12" HorizontalAlignment="Right" Foreground="WhiteSmoke" Canvas.Left="513" Margin="0,-10,0,0" />
             <Label x:Name="OsLabel" Content="32 bit" FontSize="12" HorizontalAlignment="Right" Foreground="WhiteSmoke" Canvas.Left="548" Margin="0,-11,0,0" />
+            <Label x:Name="PortableMode" HorizontalAlignment="Right" Foreground="WhiteSmoke" Margin="0,-10,0,0" FontSize="12"/>
+            <Label x:Name="LabelRegistered" HorizontalAlignment="Right" Foreground="#00AA00" FontWeight="Bold" FontSize="15" Margin="20,-10,0,0" Visibility="Collapsed">Registered Copy</Label>
+
         </StackPanel>
 
         <StackPanel Canvas.Top="408" Canvas.Left="20">
@@ -29,7 +32,8 @@
             <Image Source="../Assets/WestwindText.png" Height="30"  MouseDown="WestWindIcon_Click" Cursor="Hand" Width="145"/>
         </StackPanel>
 
-        <StackPanel x:Name="PanelFreeNotice" Width="Auto"  Canvas.Left="213" Canvas.Top="460" Height="65" HorizontalAlignment="Center" >
+        
+        <StackPanel x:Name="PanelFreeNotice" Width="Auto"  Canvas.Left="213" Canvas.Top="475" Height="65" HorizontalAlignment="Center" >
             <TextBlock Name="LabelUsingFreeVersion" Foreground="WhiteSmoke">You've been using the Free version</TextBlock>
             <Button Margin="0,2,0,30" Content="Register your copy" FontSize="21" FontWeight="Bold" IsDefault="True"
             	HorizontalAlignment="Left" Click="Register_Click" 

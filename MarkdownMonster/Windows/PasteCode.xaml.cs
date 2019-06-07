@@ -86,7 +86,7 @@ namespace MarkdownMonster.Windows
                 {"markdown","Markdown" },
                 {"yaml", "Yaml" },
 
-                { "powershell", "PowerShell"},
+                {"powershell", "PowerShell"},
                 {"dos", "DOS"},
                 {"bash", "Bash" },
                 {"ini", "INI files" },
@@ -94,8 +94,7 @@ namespace MarkdownMonster.Windows
                 {"perl", "Perl"},
                 {"diff", "Diff file"},
 
-
-                {"txt", "Text - plain text, no formatting" }
+                {"text", "Text - plain text, no formatting" }
             }
             .OrderBy(kv => kv.Key.ToLower())
             .ToDictionary(kv=> kv.Key, kv=> kv.Value);
@@ -106,7 +105,9 @@ namespace MarkdownMonster.Windows
 
             AppModel = mmApp.Model;
           
-            mmApp.SetThemeWindowOverride(this);            
+            mmApp.SetThemeWindowOverride(this);
+            if (Owner == null)
+                Owner = mmApp.Model.Window;
 
             Loaded += PasteCode_Loaded;
             PreviewKeyDown += PasteCode_PreviewKeyDown;

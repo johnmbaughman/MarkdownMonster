@@ -181,11 +181,21 @@ namespace MarkdownMonster.Windows
             PreviewBrowser.Navigate(url);
         }
 
+        public void Refresh(bool noCache = false)
+        {
+            PreviewBrowser.Refresh(noCache);
+            PreviewMarkdownAsync();
+        }
 
         public void ExecuteCommand(string command, params dynamic[] args)
         {
             PreviewBrowser.ExecuteCommand(command, args);
         }
         #endregion
+
+        public void Dispose()
+        {
+            PreviewBrowser.Dispose();
+        }
     }
 }

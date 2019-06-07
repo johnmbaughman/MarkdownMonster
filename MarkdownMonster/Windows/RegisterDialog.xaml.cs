@@ -1,20 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
-using MarkdownMonster.Annotations;
 using Westwind.Utilities;
 
 namespace MarkdownMonster.Windows
@@ -24,9 +13,12 @@ namespace MarkdownMonster.Windows
     /// </summary>
     public partial class RegisterDialog : Window, INotifyPropertyChanged
     {
+        public bool CloseOwner { get; }
 
-        public RegisterDialog()
+        public RegisterDialog(bool closeOwner = false)
         {
+            CloseOwner = closeOwner;
+
             InitializeComponent();
             var accessCount = mmApp.Configuration.ApplicationUpdates.AccessCount;
             RunUsage.Text = $"{accessCount} times";
@@ -45,7 +37,20 @@ namespace MarkdownMonster.Windows
             DataContext = this;
 
             Topmost = true;
-            Loaded += (s, e) => { Dispatcher.Delay(200, (p) => Topmost = false); };
+
+        }
+
+
+        protected override void OnActivated(EventArgs e)
+        {
+            base.OnActivated(e);
+
+            // hide the MainWindow when showing the reminder window
+            // have to do this here or else the window won't activate in the right place
+            if (CloseOwner)
+                Owner.Top -= 10000;
+
+            Topmost = false;
         }
 
         private void Exit_Click(object sender, MouseButtonEventArgs e)
@@ -53,21 +58,13 @@ namespace MarkdownMonster.Windows
             var accessCount = mmApp.Configuration.ApplicationUpdates.AccessCount;
             if (accessCount > 70)
             {
-                Register_Click(null, null);
-
-                //int w = accessCount / 20;
-                //if (w > 10)
-                //    w = 10;
-                //for (int i = 0; i < w; i++)
-                //{                    
-                //    ShutdownTimer.Text = $"Shutdown Timer: {w - i} seconds left";
-                //    WindowUtilities.DoEvents();
-                //    Thread.Sleep(1000);
-                //}                
+                ShellUtils.GoUrl(mmApp.Urls.RegistrationUrl);
             }
 
             Close();
         }
+
+        
 
         private void Register_Click(object sender, RoutedEventArgs routedEventArgs)
         {

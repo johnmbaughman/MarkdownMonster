@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -62,17 +63,27 @@ namespace MarkdownMonster.Configuration
 	    private string _folderPath;
 
 
-	    public string IgnoredFolders { get; set; } = ".git,node_modules";
+	    public string IgnoredFolders { get; set; } = ".git,node_modules,.vs";
 
-	    public string IgnoredFileExtensions { get; set; } = ".saved.bak,kavadocstopic.md";
+	    public string IgnoredFileExtensions { get; set; } = ".saved.bak,kavadocstopic.md,.saved.bak.md;";
 
 
-        public List<string> RecentFolders { get; set; } = new List<string>();
+	    public List<string> RecentFolders
+	    {
+	        get => _recentFolders;
+	        set
+	        {
+	            if (Equals(value, _recentFolders)) return;
+	            _recentFolders = value;
+	            OnPropertyChanged();
+	        }
+	    }
+	    private List<string> _recentFolders = new List<string>();
 
-	    /// <summary>
-	    /// Determines whether icons are displayed in folder browser        
-	    /// </summary>
-	    public bool ShowIcons { get; set; } = true;
+        /// <summary>
+        /// Determines whether icons are displayed in folder browser        
+        /// </summary>
+        public bool ShowIcons { get; set; } = true;
 
 
 	    public void AddRecentFolder(string folder)
@@ -90,7 +101,7 @@ namespace MarkdownMonster.Configuration
 	            RecentFolders.Remove(matchList[index]);
             
 	        RecentFolders.Insert(0, folder);
-            RecentFolders = RecentFolders.Take(mmApp.Configuration.RecentDocumentsLength).ToList();
+	        RecentFolders = RecentFolders.Take(mmApp.Configuration.RecentDocumentsLength).ToList();
 	    }
 
 	    public void UpdateRecentFolderContextMenu(ContextMenu contextMenu)

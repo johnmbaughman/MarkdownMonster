@@ -111,19 +111,21 @@ namespace SnagItAddin
             SnagIt.ActiveForm = Model.Window;
 
             var editor = Model.Window.GetActiveMarkdownEditor();
+            if (editor == null)
+                return;
 
             SnagIt.CapturePath = editor?.MarkdownDocument.Filename;
             SnagIt.CapturePath = !string.IsNullOrEmpty(SnagIt.CapturePath) && SnagIt.CapturePath != "untitled" ? 
                 Path.GetDirectoryName(SnagIt.CapturePath) :
-                mmApp.Configuration.LastImageFolder;
+                editor.MarkdownDocument.LastImageFolder;
 
 
             string capturedFile = SnagIt.CaptureImageToFile();
             if (string.IsNullOrEmpty(capturedFile) || !File.Exists(capturedFile))
                 return;
 
-            capturedFile = FileUtils.GetRelativePath(capturedFile, SnagIt.CapturePath);
-            string relPath = capturedFile.Replace("\\", "/");
+            string relPath = FileUtils.GetRelativePath(capturedFile, SnagIt.CapturePath);
+            relPath = relPath.Replace("\\", "/");
             if (relPath.StartsWith(".."))
                 relPath = capturedFile;
 
@@ -132,10 +134,10 @@ namespace SnagItAddin
 
             string replaceText = "![](" + relPath.Replace(" ","%20") + ")";
 
-            mmApp.Configuration.LastImageFolder = SnagIt.CapturePath;
+            editor.MarkdownDocument.LastImageFolder = SnagIt.CapturePath;
 
             // Push the new text into the Editor's Selection
-            SetSelection(replaceText);
+            editor.SetSelectionAndFocus(replaceText);
         }
 
         private void ExecuteApplicationFormCapture()
@@ -189,10 +191,8 @@ namespace SnagItAddin
             string replaceText = "![](" + relPath.Replace(" ","%20") + ")";
 
             // Push the new text into the Editor's Selection
-            SetSelection(replaceText);
-            Model.ActiveEditor.SetEditorFocus();
-            Model.Window.PreviewMarkdown(Model.ActiveEditor, true);
-
+            Model.ActiveEditor.SetSelectionAndFocus(replaceText);            
+            Model.Window.PreviewMarkdownAsync(Model.ActiveEditor,true);
         }
 
 #if false

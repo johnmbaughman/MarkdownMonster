@@ -1,902 +1,1045 @@
-﻿/// <reference path="editorsettings.js"/>
+/// <reference path="editorsettings.js"/>
 /// <reference path="editorSpellcheck.js"/>
+/// <reference path="editorSpellcheck.js"/>
+/// <reference path="scripts/ace/ace.js" />
 
-// NOTE: All method and property names have to be LOWER CASE!
-//       in order for FoxPro to be able to access them here.
-var te = window.textEditor = {
+(function () {
+
+  var Split = ace.require("ace/split").Split;
+  var allowSplitMode = true;
+
+  var te = window.textEditor = {
     mm: null, // Markdown Monster MarkdownDocumentEditor COM object
-    editor: null, // Ace Editor instance
-    previewRefresh: 800,
+
+    // Editor and Split instances
+    splitInstance: null,
+    editor: null, // Ace Editor instance - can be a split instance
+    mainEditor: null, // The main editor instance (root instance)
+    editorElement: null, // Ace Editor DOM element bount to
+
+    previewRefreshTimeout: 800,
     settings: editorSettings,
-    lastError: null,    
+    lastError: null,
     dic: null,
     aff: null,
     isDirty: false,
     mousePos: { column: 0, row: 0 },
     spellcheck: null,
+    codeScrolled: null,
 
-    initialize: function () {
-
-        // attach ace to formatted code controls if they are loaded and visible
-        var $el = $("pre[lang]");
-        try {
-            var codeLang = $el.attr('lang');
-            var aceEditorRequest = ace.edit($el[0]);
-            te.editor = aceEditorRequest;
-            te.configureAceEditor(aceEditorRequest, editorSettings);
-
-            te.setlanguage(codeLang);            
-        } catch (ex) {
-            if (typeof console !== "undefined")
-                console.log("Failed to bind syntax: " + codeLang + " - " + ex.message);
-        }
-
-        //te.editor.focus();
-
-        // explicitly call this from WPF
-        //if (editorSettings.enableSpellChecking)
-        //    setTimeout(spellcheck.enable, 1000);
+    setCodeScrolled: function(ignored) {
+      te.codeScrolled = new Date().getTime();
     },
-    configureAceEditor: function (editor, editorSettings) {
-        if (!editor)
-            editor = te.editor;
-        if (!editorSettings)
-            editorSettings = te.settings;
+    initialize: function (styleSettings) {
+      if (!styleSettings)
+        styleSettings = editorSettings;
 
-        var session = editor.getSession();
+      // attach ace to formatted code controls if they are loaded and visible
+      var $el = $("pre[lang]");
+      te.editorElement = $el[0];
+      try {
+        var codeLang = $el.attr('lang');
 
-        editor.setReadOnly(false);
-        editor.setHighlightActiveLine(editorSettings.highlightActiveLine);
-        editor.setShowPrintMargin(editorSettings.showPrintMargin);
-        editor.setShowInvisibles(editorSettings.showInvisibles);
+        if (!allowSplitMode)
+          te.editor = ace.edit(te.editorElement);
+        else {
+          //Splitting
+          var theme = "ace/theme/" + styleSettings.theme;
+          var split = new Split(te.editorElement, theme, 1);
+          te.splitInstance = split;
+          te.editor = split.getEditor(0);
+          te.mainEditor = te.editor; // keep track of the main editor
+          //te.editor.name = "Editor1";
 
-        //te.settheme(editorSettings.theme, editorSettings.fontSize, editorSettings.wrapText);
-        editor.setTheme("ace/theme/" + editorSettings.theme);
-        editor.setOptions({
-            fontFamily: editorSettings.font,
-            fontSize: editorSettings.fontSize
-        });
-
-        // allow editor to soft wrap text
-        session.setUseWrapMode(editorSettings.wrapText);
-        session.setOption("indentedSoftWrap", false);
-
-        editor.renderer.setShowGutter(editorSettings.showLineNumbers);
-        editor.setOption("scrollPastEnd", 0.7); // will have additional scroll  0.7% of screen height
-        editor.$blockScrolling = Infinity;
-
-        session.setTabSize(editorSettings.tabSpaces);
-
-        //editor.setOptions({
-        //    enableBasicAutocompletion: true
-        //});
-        
-        session.setNewLineMode("windows");
-
-        // disable certain hot keys in editor so we can handle them here        
-        editor.commands.bindKeys({
-            //"alt-k": null,
-            "ctrl-n": function () {
-                te.specialkey("ctrl-n");
-                // do nothing but:
-                // keep ctrl-n browser behavior from happening
-                // and let WPF handle the key
-            },
-            "f5": function () {
-                te.editor.blur(); // HACK: avoid letter o insertion into document IE bug
-                te.specialkey("f5");
-                setTimeout(function () { te.editor.focus(); }, 20);                
-            },
-            "ctrl-f5": function () {
-                te.editor.blur(); // HACK: avoid letter o insertion into document IE bug
-                te.specialkey("f5");
-                setTimeout(function () { te.editor.focus(); }, 20);  
-            },
-            //"ctrl-f5": function() {
-            //    // avoid page refresh
-            //},
-            //"f1": function () {
-            //    te.specialkey("f1");
-            //},
-            // save
-            "ctrl-s": function () {
-                te.mm.textbox.IsDirty(); // force document to update
-                te.specialkey("ctrl-s");
-            },
-            // Open document
-            "ctrl-o": function () {
-                te.editor.blur(); // HACK: avoid letter o insertion into document IE bug
-                te.specialkey("ctrl-o");
-                setTimeout(function () { te.editor.focus(); }, 20);
-            },
-
-            // link
-            "ctrl-k": function () { te.specialkey("ctrl-k"); },
-            // print
-            "ctrl-p": function () { te.specialkey("ctrl-p") },
-            // turn lines into list
-            "ctrl-l": function () { te.specialkey("ctrl-l"); },
-            // Emoji
-            "ctrl-j": function () { te.specialkey("ctrl-j") },
-
-            // Image emedding
-            "alt-i": function () { te.specialkey("alt-i"); },
-
-            // find again redirect
-            "f3": function () { te.editor.execCommand("findnext") },
-            // embed code
-            "alt-c": function () { te.specialkey("alt-c"); },
-            // inline code 
-            "ctrl-`": function () { te.specialkey("ctrl-`"); },
-
-            "ctrl-b": function () { te.specialkey("ctrl-b"); },
-            "ctrl-i": function () { te.specialkey("ctrl-i"); },
-
-            // delete line
-            "shift-del": te.deleteCurrentLine,
-
-            // try to move between tabs
-            "ctrl-tab": function () { te.specialkey("ctrl-tab"); },
-
-            "ctrl-shift-tab": function () { te.specialkey("ctrl-shift-tab"); },
-
-            // take over Zoom keys and manually zoom
-            "ctrl--": function () {
-                te.specialkey("ctrl--");
-                return null;
-            },
-            "ctrl-=": function () {
-                te.specialkey("ctrl-=");
-                return null;
-            },
-            //"alt-shift-enter": function() { te.specialkey("alt-shift-enter")},
-            "ctrl-shift-down": function () { te.specialkey("ctrl-shift-down"); },
-            "ctrl-shift-up": function () { te.specialkey("ctrl-shift-up"); },
-
-            // Paste as Markdown/From Html
-            "ctrl-shift-c": function () { te.specialkey("ctrl-shift-c"); },
-            "ctrl-shift-v": function () { te.specialkey("ctrl-shift-v"); },
-
-            // remove markdown formatting
-            "ctrl-shift-z": function () { te.specialkey("ctrl-shift-z"); },
-
-            // Capture paste operation in WPF to handle Images
-            "ctrl-v": function () { te.mm.textbox.PasteOperation(); }
-        });
-
-        editor.renderer.setPadding(15);
-        editor.renderer.setScrollMargin(5, 5, 0, 0); // top,bottom,left,right
-
-        //te.editor.getSession().setMode("ace/mode/markdown" + lang);   
-
-        te.editor.setOptions({
-            // fill entire view
-            maxLines: 0,
-            minLines: 0
-            //wrapBehavioursEnabled: editorSettings.wrapText                       
-        });
-
-        var updateDocument = debounce(function () {
-            if (!te.mm)
-                return;
-            te.isDirty = te.mm.textbox.IsDirty();
-            te.mm.textbox.PreviewMarkdownCallback(true);  // don't get markdown again
-            te.updateDocumentStats();
-        }, te.previewRefresh);
-        $("pre[lang]").on("keyup", updateDocument);
-
-
-        // always have mouse position available when drop or paste
-        te.editor.on("mousemove",
-            function (e) {
-                te.mousePos = e.getDocumentPosition();
+          split.on("focus",
+            function (editor) {
+              te.editor = editor;
             });
-        te.editor.on("mouseup",
-            function () {
-                if (!te.mm)
-                    return;
-
-                te.mm.textbox.PreviewMarkdownCallback();
-
-                // spellcheck - force recheck on next cycle
-                if (sc)
-                    sc.contentModified = true;
-            });
-        // used to force mouse position to whatever the existing cursor position is
-        // when dragging from explorer. Without this files are always dropped at the
-        // end of the document. With this it's dropped at the current cursor position
-        // (better but not optimal)
-        window.ondragover = function (e) {
-            te.mousePos = te.editor.getCursorPosition();
         }
-        // Let browser navigate events handle drop operations
-        // in the WPF host application
-        // handle file browser dragged files dropped
-        // *** Don't Remove! Explorer dragging captures navigation event in WPF
-        //     This captures requests from the Filebrowser
-        window.ondrop =
-            function (e) {
-                // these don't really have any effect'
-                //e.stopPropagation();
-                //e.preventDefault();		    
-                var file = e.dataTransfer.getData('text');
 
-                console.log('ondrop');
+        te.setlanguage(codeLang);
+        te.configureAceEditor(te.editor, styleSettings);
 
-                // image file names dropped from FolderBrowser
-                //if (file && /(.png|.jpg|.gif|.jpeg|.bmp|.svg)$/i.test(file)) {
-                if (file && /\..\w*$/.test(file)) {
-                    //// IE will *ALWAYS* drop the file text but selects the drops text
-                    //// delay and the collapse selection and let
-                    //// WPF paste the image expansion
-                    setTimeout(function () {
-                        // embed the image or open the file
-                        te.mm.textbox.EmbedDroppedFileAsImage(file);
-                    }, 1);
+      } catch (ex) {
+        if (typeof console !== "undefined")
+          console.log("Failed to bind syntax: " + codeLang + " - " + ex.message);
+      }
+    },
+    // Call SetStyle
+    configureAceEditor: function(editor, editorSettings) {
+      if (!editor)
+        editor = te.editor;
+      if (!editorSettings)
+        editorSettings = te.settings;
 
-                    te.setselection(''); // collapse and remove file name dragged into doc
+      var session = editor.getSession();
+      session.name = "markdownmonster_" + new Date().getTime();
 
-                    return false;
+      editor.setReadOnly(false);
+
+      editor.setOption("scrollPastEnd", 0.7); // will have additional scroll  0.7% of screen height
+      editor.$blockScrolling = Infinity;
+      session.setTabSize(editorSettings.tabSpaces);
+
+      editor.setOptions({
+        // fill entire view
+        maxLines: 0,
+        minLines: 0
+        //wrapBehavioursEnabled: editorSettings.wrapText
+      });
+
+      te.setEditorStyle(editorSettings, editor);
+
+      var updateDocument = debounce(function(force) {
+          if (!te.mm)
+            return;
+
+          // check for dirty stats and preview
+          if (force)
+          {
+              previewRefresh();
+              updateDocumentStats();
+          }else {
+              te.isDirty = te.mm.textbox.IsDirty(true);
+              if (te.isDirty || force)
+                  te.updateDocumentStats();
+          }
+        }, te.previewRefreshTimeout);
+
+      var previewRefresh = debounce(function() {te.mm.textbox.PreviewMarkdownCallback(true); },80);
+      $("pre[lang]").on("keyup",
+        function(event) {
+            // up and down handling - force a preview refresh
+            if (event.keyCode === 38 || event.keyCode === 40) {
+                previewRefresh();
+                te.updateDocumentStats();
+            }
+            else if (event.keyCode === 37 || event.keyCode === 39)
+                te.updateDocumentStats();
+            else if (te.editor.$keybindingId === "ace/keyboard/vim" && (event.keyCode === 74 || event.keyCode == 75)) {
+                if (!te.editor.state.cm.state.vim.insertMode) {
+                    previewRefresh();
+                    updateDocumentStats();
                 }
-            };
-        // this doesn't fire
-        //te.editor.on("dragover",
-        //    function (e) {                
-        //        alert('drag over');
-        //        te.mousePos = e.getDocumentPosition();
-        //    });        
-        var changeScrollTop = debounce(function (e) {
-            // if there is a selection don't set cursor position
-            // or preview. Mouseup will scroll to position at end
-            // of selection            
-            var sel = te.getselection();
-            if (sel && sel.length > 0)
-                return;
-            
-            setTimeout(function () {
-                var firstRow = te.editor.renderer.getFirstVisibleRow();
-                if (firstRow > 2)
-                    firstRow+=3;
+            } else
+                updateDocument();
+        });
 
-                // preview and highlight top of display
-                te.mm.textbox.PreviewMarkdownCallback(false,firstRow);
-            }, 10);
-            setTimeout(function () {
-                if (sc)
-                    sc.contentModified = true;
-            }, 150);
-        },35);
-        te.editor.session.on("changeScrollTop", changeScrollTop);
-        return editor;
+      // always have mouse position available when drop or paste
+      editor.on("mousemove",
+        function(e) {
+          te.mousePos = e.getDocumentPosition();
+        });
+      editor.on("mouseup",
+        function() {
+          if (te.mm)
+            te.mm.textbox.PreviewMarkdownCallback(true);
+
+          // spellcheck - force recheck on next cycle
+          if (sc)
+            sc.contentModified = true;
+
+          te.updateDocumentStats();
+        });
+
+      // Notify WPF of focus change
+      editor.on("blur", te.onBlur);
+      editor.on("focus", te.onGotFocus);
+
+      // used to force mouse position to whatever the existing cursor position is
+      // when dragging from explorer. Without this files are always dropped at the
+      // end of the document. With this it's dropped at the current cursor position
+      // (better but not optimal)
+      window.ondragover = function(e) {
+        te.mousePos = te.editor.getCursorPosition();
+      };
+
+      // Let browser navigate events handle drop operations
+      // in the WPF host application
+      // handle file browser dragged files dropped
+      // *** Don't Remove! Explorer dragging captures navigation event in WPF
+      //     This captures requests from the Filebrowser
+      window.ondrop = function(e) {
+          // these don't really have any effect'
+          //e.stopPropagation();
+          //e.preventDefault();
+          var file = e.dataTransfer.getData('text');
+
+          // image file names dropped from FolderBrowser
+          //if (file && /(.png|.jpg|.gif|.jpeg|.bmp|.svg)$/i.test(file)) {
+          if (file && /\..\w*$/.test(file)) {
+            //// IE will *ALWAYS* drop the file text but selects the drops text
+            //// delay and the collapse selection and let
+            //// WPF paste the image expansion
+            setTimeout(function() {
+                // embed the image or open the file
+                te.mm.textbox.EmbedDroppedFileAsImage(file);
+              },
+              1);
+
+            te.setselection(''); // collapse and remove file name dragged into doc
+
+            return false;
+          }
+      };
+
+      // this doesn't fire
+      //te.editor.on("dragover",
+      //    function (e) {
+      //        alert('drag over');
+      //        te.mousePos = e.getDocumentPosition();
+      //    });
+
+      var changeScrollTop = debounce(function(e) {
+          // don't do anything if we moved without requesting
+          // a document refresh (from preview refresh)
+          if (te.codeScrolled) {
+            var t = new Date().getTime();
+            if (te.codeScrolled > t - 850)
+              return;
+          }
+          te.codeScrolled = null;
+
+          // if there is a selection don't set cursor position
+          // or preview. Mouseup will scroll to position at end
+          // of selection
+          var sel = te.getselection();
+          if (sel && sel.length > 0)
+            return;
+
+          setTimeout(function() {
+              var firstRow = te.editor.renderer.getFirstVisibleRow();
+              if (firstRow > 2)
+                firstRow += 3;
+
+              // preview and highlight top of display
+              te.mm.textbox.PreviewMarkdownCallback(true, firstRow);
+
+              if (sc)
+                sc.contentModified = true;
+            },
+            10);
+        }, 80);
+
+      editor.session.on("changeScrollTop", changeScrollTop);
+
+      return editor;
     },
-    initializeeditor: function () {
-        te.configureAceEditor(null, null);
+    initializeeditor: function() {
+      te.configureAceEditor(null, null);
     },
     status: function status(msg) {
-        //alert(msg);
-        status(msg);
+      //alert(msg);
+      status(msg);
     },
-    getscrolltop: function (ignored) {
-        var st = te.editor.getSession().getScrollTop();
-        return st;
+    getscrolltop: function(ignored) {
+      var st = te.editor.getSession().getScrollTop();
+      return st;
     },
-    setscrolltop: function (scrollTop) {
-        setTimeout(function () {
-            return te.editor.getSession().setScrollTop(scrollTop);
+    setscrolltop: function(scrollTop) {
+      setTimeout(function() {
+          return te.editor.getSession().setScrollTop(scrollTop);
         },
-            100);
+        100);
     },
-    getvalue: function (ignored) {
-        var text = te.editor.getSession().getValue();
-        return text.toString();
+    getvalue: function(ignored) {
+      var text = te.editor.getSession().getValue();
+      return text.toString();
     },
-    setvalue: function (text, pos) {
-        if (!pos)
-            pos = -1; // first line
+    setvalue: function(text, pos, keepUndo) {
+      if (!pos)
+        pos = -1; // first line
 
-        var offset = 0; // get cursor offset
-        if (pos === -2) {
-            try {
-                offset = te.editor.session.doc.positionToIndex(te.editor.selection.getCursor());
-            } catch (ex) {
-                pos = -1; // go to top
-            }
-            if (offset == 0) // if 0 go to top
-                pos = -1;
+      var offset = 0; // get cursor offset
+      if (pos === -2) {
+        try {
+          offset = te.editor.session.doc.positionToIndex(te.editor.selection.getCursor());
+        } catch (ex) {
+          pos = -1; // go to top
         }
+        if (offset == 0) // if 0 go to top
+          pos = -1;
+      }
 
-        te.editor.setValue(text, pos);
+      te.editor.setValue(text, pos);
+      if (offset > 0)
+        te.setselposition(offset, 0);
 
-        if (offset > 0) {
-            te.setselposition(offset, 0);
-        }
-
+      if (!keepUndo) {
+        // load a new document
         te.editor.getSession().setUndoManager(new ace.UndoManager());
-
-        setTimeout(function () {
+        setTimeout(function() {
             te.editor.resize(true); //force a redraw
-        },
-            30);
+          },
+          30);
+      }
     },
-    setReadOnly: function (status) {
-        if (te.editor.readOnly == status)
-            return;
-        te.editor.setReadOnly(status);
-        //.readOnly = status;        
-        if (status) {                
-            te.editor.container.style.opacity = 0.70;                
-            $(te.editor.container).on("dblclick", te.readOnlyDoubleClick);
-        } else {
-            $(te.editor.container).off("dblclick", te.readOnlyDoubleClick);
-            te.editor.container.style.opacity = 1; // or use svg filter to make it gray            
-        }
+    setReadOnly: function(status) {
+      if (te.editor.readOnly == status)
+        return;
+      te.editor.setReadOnly(status);
+      //.readOnly = status;
+      if (status) {
+        te.editor.container.style.opacity = 0.70;
+        $(te.editor.container).on("dblclick", te.readOnlyDoubleClick);
+      } else {
+        $(te.editor.container).off("dblclick", te.readOnlyDoubleClick);
+        te.editor.container.style.opacity = 1; // or use svg filter to make it gray
+      }
     },
-    readOnlyDoubleClick: function () {    
-        if (!te.mm)
-            return;
+    readOnlyDoubleClick: function() {
+      if (!te.mm)
+        return;
 
-        te.mm.textbox.NotifyAddins("ReadOnlyEditorDoubleClick",null);
+      te.mm.textbox.NotifyAddins("ReadOnlyEditorDoubleClick", null);
     },
     // replaces content without completely reloading the document
     // by using clipboard replacement
     // Leaves scroll position intact
     replacecontent: function(text) {
-        var sel = te.editor.getSelection();
-        sel.selectAll();
-        te.setselection(text);
+      var sel = te.editor.getSelection();
+      sel.selectAll();
+      te.setselection(text);
     },
     refresh: function(ignored) {
-        te.editor.resize(true); //force a redraw
+      te.editor.resize(true); //force a redraw
     },
-    specialkey: function(key) {
-        te.mm.textbox.SpecialKey(key);
+    keyboardCommand: function(key) {
+      if (te.mm)
+        te.mm.textbox.keyboardCommand(key);
     },
     editorSelectionOperation: function(action, text) {
+      if (te.mm)
         te.mm.textbox.EditorSelectionOperation(action, text);
     },
     setfont: function(size, fontFace, weight) {
-        if (size)
-            te.editor.setFontSize(size);
-        if (fontFace)
-            te.editor.setOption('fontFamily', fontFace);
-        if (weight)
-            te.editor.setOption('fontWeight', weight);
+      if (size)
+        te.editor.setFontSize(size);
+      if (fontFace)
+        te.editor.setOption('fontFamily', fontFace);
+      if (weight)
+        te.editor.setOption('fontWeight', weight);
     },
     getfontsize: function() {
-        var zoom = screen.deviceXDPI / screen.logicalXDPI;
-        var fontsize = te.editor.getFontSize() * zoom;
-        return fontsize;
+      var zoom = screen.deviceXDPI / screen.logicalXDPI;
+      var fontsize = te.editor.getFontSize() * zoom;
+      return fontsize;
     },
 
-    gotoLine: function (line, noRefresh, noSelection) {
-        setTimeout(function () {
-            te.editor.scrollToLine(line);
+    gotoLine: function(line, noRefresh, noSelection) {
+      //setTimeout(function() {
+      te.editor.scrollToLine(line);
 
-            if (!noSelection) {
-                var sel = te.editor.getSelection();
-                var range = sel.getRange();
-                range.setStart({ row: line, column: 0 });
-                range.setEnd({ row: line, column: 0 });
-                sel.setSelectionRange(range);
-            }
-            if (!noRefresh)
-                setTimeout(te.refreshPreview, 10);
-            
-        },100);
+      if (!noSelection) {
+        var sel = te.editor.getSelection();
+        var range = sel.getRange();
+        range.setStart({row: line, column: 0});
+        range.setEnd({row: line, column: 0});
+        sel.setSelectionRange(range);
+      }
+      if (!noRefresh)
+          setTimeout(function() {
+              te.refreshPreview();
+              te.updateDocumentStats();
+          }, 10);
+      else
+          te.codeScrolled = new Date().getTime();
+
+
+      //},
+      //70);
     },
-    gotoBottom: function (noRefresh) {
-        setTimeout(function() {
-                var row = te.editor.session.getLength() - 1;
-                var column = te.editor.session.getLine(row).length; // or simply Infinity
-             te.editor.selection.moveTo(row, column);
+    gotoBottom: function(noRefresh) {
+      //setTimeout(function() {
+      var row = te.editor.session.getLength() - 1;
+      var column = te.editor.session.getLine(row).length; // or simply Infinity
+      te.editor.selection.moveTo(row, column);
 
-                if(!noRefresh)
-                    setTimeout(te.refreshPreview, 10);                
-            },
-            70);
+      if (!noRefresh)
+        setTimeout(te.refreshPreview, 10);
+      //},
+      //70);
     },
     refreshPreview: function(ignored) {
-        te.mm.textbox.PreviewMarkdownCallback();
+      te.mm.textbox.PreviewMarkdownCallback();
     },
     setselection: function(text) {
-        var range = te.editor.getSelectionRange();
-        te.editor.session.replace(range, text);
-        te.editor.renderer.scrollSelectionIntoView();
+      var range = te.editor.getSelectionRange();
+      te.editor.session.replace(range, text);
+      te.editor.renderer.scrollSelectionIntoView();
     },
+
     getselection: function(ignored) {
-        return te.editor.getSelectedText();
+      return te.editor.getSelectedText();
+    },
+    getselectionrange: function(ignored) {
+      var range = te.editor.getSelectionRange();
+      return {
+        startRow: range.start.row,
+        endRow: range.end.row,
+        startColumn: range.start.column,
+        endColumn: range.end.column
+      };
+    },
+    getCursorPosition: function(ignored) { // returns {row: y, column: x}
+      return te.editor.selection.getCursor();
     },
     setselposition: function(index, count) {
-        var doc = te.editor.session.getDocument();
-        var lines = doc.getAllLines();
+      var doc = te.editor.session.getDocument();
+      var lines = doc.getAllLines();
 
-        function offsetToPos(offset) {
-            var row = 0, col = 0;
-            var pos = 0;
-            while (row < lines.length && pos + lines[row].length < offset) {
-                pos += lines[row].length;
-                pos++; // for the newline
-                row++;
-            }
-            col = offset - pos;
-            return { row: row, column: col };
-        };
+      function offsetToPos(offset) {
+        var row = 0, col = 0;
+        var pos = 0;
+        while (row < lines.length && pos + lines[row].length < offset) {
+          pos += lines[row].length;
+          pos++; // for the newline
+          row++;
+        }
+        col = offset - pos;
+        return { row: row, column: col };
+      };
 
-        var start = offsetToPos(index);
-        var end = offsetToPos(index + count);
+      var start = offsetToPos(index);
+      var end = offsetToPos(index + count);
 
-        var sel = te.editor.getSelection();
-        var range = sel.getRange();
-        range.setStart(start);
-        range.setEnd(end);
-        sel.setSelectionRange(range); 
+      var sel = te.editor.getSelection();
+      var range = sel.getRange();
+      range.setStart(start);
+      range.setEnd(end);
+      sel.setSelectionRange(range);
 
-        te.editor.renderer.scrollSelectionIntoView();
+      te.editor.renderer.scrollSelectionIntoView();
     },
     setselpositionfrommouse: function(pos) {
-        if (!pos)
-            pos = $.extend({}, te.mousePos);
+      if (!pos)
+        pos = $.extend({}, te.mousePos);
 
-        var sel = te.editor.getSelection();
-        var range = sel.getRange();
-        range.setStart(pos);
-        range.setEnd(pos);
-        sel.setSelectionRange(range);        
+      var sel = te.editor.getSelection();
+      var range = sel.getRange();
+      range.setStart(pos);
+      range.setEnd(pos);
+      sel.setSelectionRange(range);
     },
-    getCursorPosition: function (ignored) { // returns {row: y, column: x}               
-        return te.editor.selection.getCursor();        
-    },
+    setCursorPosition: function(row, column) { // col and also be pos: { row: y, column: x }
+      var pos;
+      if (typeof row === "object")
+        pos = row;
+      else
+        pos = { column: column, row: row };
 
-    setCursorPosition: function(row, column) { // col and also be pos: { row: y, column: x }  
-        var pos;        
-        if (typeof row === "object")
-            pos = row;
-        else
-            pos = { column: column, row: row };
+      te.editor.gotoLine(pos.row, pos.column, true);
+    },
+    setSelectionRange: function(startRow, startColumn, endRow, endColumn) {
+      var sel = te.editor.getSelection();
+      // assume a selection range if an object is passed
+      if (typeof startRow == "object") {
+        sel.setSelectionRange(startRow);
+        return;
+      }
 
-        te.editor.gotoLine(pos.row, pos.column, true);        
-    },
-    setSelectionRange: function (startRow, startColumn, endRow, endColumn) {
-        var sel = te.editor.getSelection();
-        var range = sel.getRange();        
-        range.setStart({ row: startRow, column: startColumn });
-        range.setEnd({ row: endRow, column: endColumn });
-        sel.setSelectionRange(range);       
-    },
-    deleteCurrentLine: function () {
-        var sel = te.getselection();
-        if (sel) {
-            document.execCommand('cut');
-            return;
-        }
 
-        te.editor.selection.selectLine();
-        te.editor.removeLines();        
+      var range = sel.getRange();
+      range.setStart({ row: startRow, column: startColumn });
+      range.setEnd({ row: endRow, column: endColumn });
+      sel.setSelectionRange(range);
     },
-    moveCursorLeft: function (count) {
-        if (!count)
-            count = 1;
-        var sel = te.editor.getSelection();
-        
-        for (var i = 0; i < count; i++) {
-           sel.moveCursorLeft();    
-        }        
+    deleteCurrentLine: function() {
+      var sel = te.getselection();
+      if (sel) {
+        document.execCommand('cut');
+        return;
+      }
+      te.editor.selection.selectLine();
+      te.editor.removeLines();
     },
-    moveCursorRight: function (count) {
-        if (!count)
-            count = 1;
-        var sel = te.editor.getSelection();
-        for (var i = 0; i < count; i++) {
-            sel.moveCursorRight();
-        }
-        
+    moveCursorLeft: function(count) {
+      if (!count)
+        count = 1;
+      te.editor.navigateLeft(count);
+    },
+    moveCursorRight: function(count) {
+      if (!count)
+        count = 1;
+      te.editor.navigateRight(count);
+    },
+    moveCursorUp: function(count){
+      if (!count)
+        count = 1;
+      te.editor.navigateUp(count);
+    },
+    moveCursorDown: function(count){
+      if (!count)
+        count = 1;
+      te.editor.navigateDown(count);
     },
     getLineNumber: function(ignored) {
-        var selectionRange = te.editor.getSelectionRange();
-        if (!selectionRange) {            
-            return -1;
-        }
-        return Math.floor(selectionRange.start.row);
+      var selectionRange = te.editor.getSelectionRange();
+      if (!selectionRange) {
+        return -1;
+      }
+      return Math.floor(selectionRange.start.row);
     },
     getCurrentLine: function(ignored) {
-        var selectionRange = te.editor.getSelectionRange();
-        var startLine = selectionRange.start.row;
-        return te.editor.session.getLine(startLine);
+      var selectionRange = te.editor.getSelectionRange();
+      var startLine = selectionRange.start.row;
+      return te.editor.session.getLine(startLine);
     },
     getLine: function(row) {
-        return te.editor.session.getLine(row);
+      return te.editor.session.getLine(row);
     },
     findAndReplaceText: function(search, replace) {
-        var range = te.editor.find(search,
+      var range = te.editor.find(search,
         {
-            wrap: true,
-            caseSensitive: true,
-            wholeWord: true,
-            regExp: false,
-            preventScroll: false // do not change selection
+          wrap: true,
+          caseSensitive: true,
+          wholeWord: true,
+          regExp: false,
+          preventScroll: false // do not change selection
         });
-        if (!range)
-            return;
+      if (!range)
+        return;
 
-        range.start.column = 0;        
-        range.end.column = 5000;
+      range.start.column = 0;
+      range.end.column = 5000;
 
-        
-            te.setselection(replace);                    
+
+      te.setselection(replace);
 
     },
-    findAndReplaceTextInCurrentLine: function (search, replace) {
-        var range = te.editor.getSelectionRange();
-        var startLine = range.start.row;
-        var lineText = te.editor.session.getLine(startLine);
+    findAndReplaceTextInCurrentLine: function(search, replace) {
+      var range = te.editor.getSelectionRange();
+      var startLine = range.start.row;
+      var lineText = te.editor.session.getLine(startLine);
 
-        var i = lineText.indexOf(search);
-        if (i === -1)
-            return;
-        
-        range.start.column = i;
-        range.end.column = i + search.length;
+      var i = lineText.indexOf(search);
+      if (i === -1)
+        return;
 
-        te.editor.session.replace(range, replace);
+      range.start.column = i;
+      range.end.column = i + search.length;
+
+      te.editor.session.replace(range, replace);
     },
-    gotfocus: function (ignored) {
-        te.setfocus();
-    },
-    setfocus: function (ignored) {
-        te.editor.resize(true);
 
-        setTimeout(function () {
-            te.editor.focus();
-            setTimeout(function () {
-                te.editor.focus();
-            }, 400);
-        }, 50);
+    setlanguage: function(lang) {
+
+      if (!lang)
+        lang = "txt";
+      if (lang == "vfp")
+        lang = "foxpro";
+      if (lang == "c#")
+        lang = "csharp";
+      if (lang == "c++" || lang == "cpp")
+        lang = "c_cpp";
+      if (lang == "txt" || lang == "text" || lang == "none" || lang == "plain")
+        lang = "txt";
+
+      te.editor.getSession().setMode("ace/mode/" + lang);
+    },
+    setRightToLeft: function(onOff) {
+      te.editor.session.$bidiHandler.setRtlDirection(te.editor, onOff);
+    },
+    lastStyle: null,
+    setEditorStyle: function(styleJson, editor) {
+
+      if (!editor)
+        editor = te.editor;
+
+      //setTimeout(function () {
+        var style;
+        if (typeof styleJson === "object")
+          style = styleJson;
+        else
+          style = JSON.parse(styleJson);
+
+        te.lastStyle = style;
+
+        editor.container.style.lineHeight = style.lineHeight;
+
+        var activeTheme = editor.getTheme();
+        var theme = "ace/theme/" + style.theme;
+        if (activeTheme !== theme)
+          editor.setTheme(theme);
+
+        editor.setOptions({
+          fontFamily: style.font,
+          fontSize: style.fontSize
+        });
+        //setRightToLeft(style.RightToLeft);
+
+        var wrapText = style.wrapText;
+
+        var session = editor.getSession();
+
+        session.setUseWrapMode(wrapText);
+        session.setOption("indentedSoftWrap", true);
+        session.setOptions({ useSoftTabs: style.useSoftTabs, tabSize: style.tabSize });
+
+        editor.setHighlightActiveLine(style.highlightActiveLine);
+
+        editor.renderer.setShowGutter(style.showLineNumbers);
+        editor.renderer.setShowInvisibles(style.showInvisibles);
+
+        // these value are used in Resize to keep the editor size
+        // limited to a max-width
+        te.adjustPadding(true);
+
+        if (style.showPrintMargin) {
+          te.editor.setShowPrintMargin(true);
+          te.editor.setPrintMarginColumn(style.printMargin + 1);
+        } else {
+          te.editor.setShowPrintMargin(false);
+          te.editor.setPrintMarginColumn(style.printMargin + 1);
+        }
+
+        if(style.wrapMargin > 0)
+          te.editor.session.setWrapLimitRange(style.wrapMarin, style.wrapMargin);
+        else
+          te.editor.session.setWrapLimitRange(null, null);
+
+        //style.wrapMargin = 50;
+        //if (style.wrapMargin > 0) {
+        //
+        //    te.editor.setShowPrintMargin(true);
+        //    te.editor.setPrintMarginColumn(style.wrapMargin + 1);
+        //} else {
+        //    session.setWrapLimitRange(null, null);
+        //    te.editor.setShowPrintMargin(false);
+        //}
+
+        var keyboardHandler = style.keyboardHandler;
+        if (!keyboardHandler || keyboardHandler == "default" || keyboardHandler == "ace")
+            te.editor.setKeyboardHandler("");
+        else
+            te.editor.setKeyboardHandler("ace/keyboard/" + keyboardHandler);
+
+
+
+        if (!style.enableBulletAutoCompletion) {
+          // turn off bullet auto-completion (or any new line auto-completion)
+          editor.getSession().getMode().getNextLineIndent = function (state, line) {
+            return this.$getIndent(line);
+          };
+
+        }
+      //},1);
+
+
+      setTimeout(te.updateDocumentStats, 30);
+    },
+      setShowLineNumbers: function (showLineNumbers) {
+          alert("showLine Numbers")
+         te.editor.renderer.setShowGutter(showLineNumbers);
+    },
+    setShowInvisibles: function(showInvisibles) {
+      te.editor.renderer.setShowInvisibles(showInvisibles);
+    },
+    setWordWrap: function(enable) {
+      te.editor.session.setUseWrapMode(enable);
+    },
+    execcommand: function(cmd, parm1, parm2) {
+      te.editor.execCommand(cmd);
+    },
+    curStats: { wordCount: 0, lines: 0, characters: 0 },
+    getDocumentStats: function() {
+      var text = te.getvalue();
+      pos =  te.editor.selection.getCursor();
+      if (pos.row == 0)
+          pos = te.mousePos;
+
+      // strip off front matter.
+      var frontMatterExp = /^---[ \t]*$[^]+?^(---|...)[ \t]*$/m;
+      var match = frontMatterExp.exec(text);
+      if (match && match.index == 0)
+        text = text.substr(match[0].length);
+
+      var regExWords = /\s+/gi;
+      var wordCount = text.replace(regExWords, ' ').split(' ').length;
+      var lines = text.split('\n').length;
+      var chars = text.length;
+
+      te.curStats = {
+          wordCount: wordCount,
+          lines: lines,
+          characters: chars,
+          row: pos.row,
+          column: pos.column
+      };
+
+      return te.curStats;
+    },
+    updateDocumentStats: function() {
+      setTimeout(function() {
+          te.mm.textbox.updateDocumentStats(te.getDocumentStats());
+        },
+        50);
+    },
+    enablespellchecking: function(disable, dictionary) {
+      if (dictionary)
+        editorSettings.dictionary = dictionary;
+      setTimeout(function() {
+          if (!disable)
+            spellcheck.enable();
+          else
+            spellcheck.disable();
+        },
+        100);
+    },
+    isspellcheckingenabled: function(ignored) {
+      return editorSettings.enableSpellChecking;
+    },
+    // force document to check spelling
+    spellcheckDocument: function(force) {
+        if (te.spellcheck)
+            te.spellcheck.spellCheck(force);
+    },
+    spellcheckNext: function(ignored) {
+      if (te.spellcheck)
+        te.keyBindings.nextSpellCheckError();
+    },
+    spellcheckPrevious: function(ignored) {
+      if (te.spellcheck)
+        te.keyBindings.previousSpellCheckError();
+    },
+    checkSpelling: function(word) {
+      if (!word || !editorSettings.enableSpellChecking)
+        return true;
+      if (te.mm)
+      // use COM object
+        return te.mm.textbox.CheckSpelling(word, editorSettings.dictionary, false);
+    },
+    showSuggestions: function(e) {
+      try {
+        var markers = te.editor.session.getMarkers(true);
+        if (!markers || markers.length === 0)
+          return;
+
+        var pos = e && e.getDocumentPosition ? e.getDocumentPosition() : te.editor.selection.getCursor();
+
+        var matched = null;
+
+        // look for a misspelled marker that matches our
+        // current document location
+        for (var id in markers) {
+          var marker = markers[id];
+          if (marker.clazz != "misspelled")
+            continue;
+
+          if (pos.row >= marker.range.start.row &&
+            pos.row <= marker.range.end.row &&
+            pos.column >= marker.range.start.column &&
+            pos.column <= marker.range.end.column) {
+            matched = marker;
+            break;
+          }
+        };
+
+        var range = null;
+        var misspelledWord = null;
+        if (matched) {
+          range = matched.range;
+          misspelledWord = matched.range.misspelled;
+        }
+
+        // show suggested spellings in WPF Context Menu
+        //te.suggestSpelling(misspelledWord, 8, range);
+        te.mm.textbox.GetSuggestions(misspelledWord, editorSettings.dictionary, false, range);
+
+      } catch (error) {
+        alert(error.message);
+      }
+    },
+    addWordSpelling: function(word) {
+      te.mm.textbox.AddWordToDictionary(word, editorSettings.dictionary);
+      if (sc)
+        sc.spellCheck(true);
+    },
+    replaceSpellRange: function(range, text) {
+      te.editor.getSession().replace(range, text);
+      if (sc)
+        sc.spellCheck(true);
+    },
+
+    gotfocus: function(ignored) {
+      te.setfocus();
+    },
+    setfocus: function(ignored) {
+      //te.editor.resize(true);
+
+      setTimeout(function() {
+          te.editor.focus();
+          setTimeout(function() {
+              te.editor.focus();
+            },
+            300);
+        },
+        50);
     },
     // forces Ace to lose focus
     losefocus: function(ignored) {
-        $("#losefocus").focus();
+      $("#losefocus").focus();
     },
-    setlanguage: function (lang) {
-        
-        if (!lang)
-            lang = "txt";
-        if (lang == "vfp")
-            lang = "foxpro";
-        if (lang == "c#")
-            lang = "csharp";
-        if (lang == "c++" || lang == "cpp")
-            lang = "c_cpp";
-        if (lang == "txt" || lang == "text" || lang == "none" || lang == "plain")
-            lang = "txt";
-
-        te.editor.getSession().setMode("ace/mode/" + lang);
+    onBlur: function() {
+      if (te.mm)
+        te.mm.textbox.LostFocus();
     },
-    setEditorStyle: function (styleJson) {
-        
-        var style = JSON.parse(styleJson);
+    onGotFocus: function() {
+      if (te.mm)
+        te.mm.textbox.GotFocus();
+    },
+    blurEditorAndRefocus: function(mstimeout) {
+      if (!mstimeout)
+        mstimeout = 50;
 
-        te.editor.container.style.lineHeight = style.LineHeight;
-        te.editor.setTheme("ace/theme/" + style.Theme);        
-        te.editor.setOptions({
-            fontFamily: style.Font,
-            fontSize: style.FontSize
-        });        
+      te.noRefreshPreview = true;
+      te.editor.blur(); // HACK: avoid letter o insertion into document
+      setTimeout(function() {
+          te.editor.focus();
+          te.noRefreshPreview = false;
+        },
+        mstimeout);
+    },
 
-        var wrapText = style.WrapText;
+    adjustPadding: function(forceRefresh) {
+      if (!te.lastStyle || !te.splitInstance)
+        return;
 
-        var session = te.editor.getSession();
-        session.setUseWrapMode(wrapText);
-        session.setOption("indentedSoftWrap", true);
+      var lastPad = te.lastStyle.padding;
 
-        te.editor.setHighlightActiveLine(style.HighlightActiveLine);
+      // single pane
+      if (!te.splitInstance || te.splitInstance.$splits < 2) {
+        var ed = te.splitInstance.getEditor(0);
 
-        te.editor.renderer.setShowGutter(style.ShowLineNumbers);
-        te.editor.renderer.setShowInvisibles(style.ShowInvisibles);
+        // just apply fixed padding
+        if (te.lastStyle.maxWidth == 0) {
+          ed.renderer.setPadding(lastPad);
+        } else {
 
-        
-        //var keyboardHandler = style.KeyboardHandler.toLowerCase();
-        //if (!keyboardHandler || keyboardHandler == "default" || keyboardHandler == "ace")
-        //    te.editor.setKeyboardHandler("");
-        //else
-        //    te.editor.setKeyboardHandler("ace/keyboard/" + keyboardHandler);
-
-        
-        if (!style.EnableBulletAutoCompletion) {
-            // turn off bullet auto-completion (or any new line auto-completion)
-            te.editor.getSession().getMode().getNextLineIndent = function(state, line) {
-                return this.$getIndent(line);
-            };
+          // Apply width
+          var w = window.innerWidth - te.lastStyle.maxWidth;
+          if (w > lastPad * 2) {
+            var pad = w / 2;
+            ed.renderer.setPadding(w / 2);
+          } else
+            ed.renderer.setPadding(lastPad);
         }
 
-        setTimeout(te.updateDocumentStats, 100);
-    },
-    setShowLineNumbers: function(showLineNumbers) { 
-        te.editor.renderer.setShowGutter(showLineNumbers);  
-    },
-    setShowInvisibles: function (showInvisibles) { 
-        te.editor.renderer.setShowInvisibles(showInvisibles);  
-    },
-    setWordWrap: function (enable) {
-        te.editor.session.setUseWrapMode(enable);
-    },
-    execcommand: function(cmd,parm1,parm2) {
-        te.editor.execCommand(cmd);
-    },
-    curStats: { wordCount: 0, lines: 0, characters: 0 },
-    getDocumentStats: function () {
-        var text = te.getvalue();
+        ed.resize(true);
+        te.splitInstance.resize();
 
-        // strip off front matter.
-        var frontMatterExp = /^---[ \t]*$[^]+?^(---|...)[ \t]*$/m;
-        var match = frontMatterExp.exec(text);
-        if (match && match.index == 0)
-            text = text.substr(match[0].length);
+        return;
+      }
 
-        var regExWords = /\s+/gi;
-        var wordCount = text.replace(regExWords, ' ').split(' ').length;                
-        var lines = text.split('\n').length;
-        var chars = text.length;
 
-        te.curStats = {
-            wordCount: wordCount,
-            lines: lines,
-            characters: chars
+      // we have multiple panes
+
+      var ed = te.splitInstance.getEditor(0);
+      var ed2 = te.splitInstance.getEditor(1);
+
+
+      // if there's no MaxWidth just apply fixed padding to both splits
+      if (te.lastStyle.maxWidth == 0) {
+        ed2.renderer.setPadding(lastPad);
+        ed.renderer.setPadding(lastPad);
+      }
+      // Horizontal splits
+      else if (te.splitInstance.getOrientation() == te.splitInstance.BESIDE) {
+        // Set padding for two horizontal splits
+        var w = window.innerWidth / 2 - te.lastStyle.maxWidth;
+
+        if (w > lastPad * 2) {
+          // calc padding
+          var pad = Math.floor(w / 2);
+          ed2.renderer.setPadding(pad);
+          ed.renderer.setPadding(pad);
+        } else {
+          // smaller than max width - use padding setting
+          ed.renderer.setPadding(lastPad);
+          ed2.renderer.setPadding(lastPad);
         }
+      }
+      // vertical splits
+      else {
+        var w = window.innerWidth - te.lastStyle.maxWidth;
 
-        return te.curStats;
-    },
-    updateDocumentStats: function() {
-        te.mm.textbox.updateDocumentStats(te.getDocumentStats());
-    },
-    enablespellchecking: function (disable, dictionary) {
-        if (dictionary)
-            editorSettings.dictionary = dictionary;
-        setTimeout(function() {
-                if (!disable)
-                    spellcheck.enable();
-                else
-                    spellcheck.disable();
-            },
-            100);
-    },
-    isspellcheckingenabled: function(ignored) {
-        return editorSettings.enableSpellChecking;
-    },
-    checkSpelling: function (word) {        
-        if (!word || !editorSettings.enableSpellChecking)
-            return true;
-        if (te.mm)   
-            // use COM object        
-            return te.mm.textbox.CheckSpelling(word,editorSettings.dictionary,false);
-    },
-    showSuggestions: function (e) {
-        try {
-            var markers = te.editor.session.getMarkers(true);
-            if (!markers || markers.length === 0)
-                return;
-
-            var pos = e && e.getDocumentPosition ? e.getDocumentPosition() : te.editor.selection.getCursor();
-
-            var matched = null;
-
-            // look for a misspelled marker that matches our
-            // current document location
-            for (var id in markers) {
-                var marker = markers[id];
-                if (marker.clazz != "misspelled")
-                    continue;
-
-                if (pos.row >= marker.range.start.row &&
-                    pos.row <= marker.range.end.row &&
-                    pos.column >= marker.range.start.column &&
-                    pos.column <= marker.range.end.column) {
-                    matched = marker;
-                    break;
-                }
-            };
-
-            var range = null;
-            var misspelledWord = null;
-            if (matched) {
-                range = matched.range;
-                misspelledWord = matched.range.misspelled;
-            }
-
-            // show suggested spellings in WPF Context Menu
-            //te.suggestSpelling(misspelledWord, 8, range);
-            te.mm.textbox.GetSuggestions(misspelledWord, editorSettings.dictionary, false, range);
-
-        } catch (error) {
-            alert(error.message);
+        if (w > lastPad * 2) {
+          var pad = w / 2;
+          ed2.renderer.setPadding(pad);
+          ed.renderer.setPadding(pad);
+        } else {
+          ed.renderer.setPadding(lastPad);
+          ed2.renderer.setPadding(lastPad);
         }
+      }
+
+      te.splitInstance.resize();
     },
-    addWordSpelling: function (word) {        
-        te.mm.textbox.AddWordToDictionary(word, editorSettings.dictionary);
-        if (sc)
-            sc.spellCheck(true);
-    },
-    replaceSpellRange: function (range, text) {        
-        te.editor.getSession().replace(range, text);         
-        if (sc)
-            sc.spellCheck(true);
-    },
-    onblur: function () {
-        te.mm.textbox.lostfocus();
+
+    // Below or Beside or None
+    split: function(value) {
+      var split = te.splitInstance;
+
+      if (value === "Below" || value === "Beside") {
+
+        split.setOrientation(value == "Below" ? split.BELOW : split.BESIDE);
+        split.setSplits(2);
+
+        // IMPORTANT: reset large padding first - if padding is too large panel won't render right
+        te.mainEditor.renderer.setPadding(te.lastStyle.padding);
+        te.mainEditor.resize(true);
+
+        // setSplits creates a second editor instance
+        var editor2 = split.getEditor(1);
+        editor2.Name = "Editor2";
+
+        // get the old window session and assign to the new editor instance
+        var session = te.mainEditor.session; //split.getEditor(0).session;
+        var newSession = split.setSession(session, 1);
+        newSession.name = session.name;
+
+        // Update editor to match current settings (app specific - cached JSON settings from WPF host)
+        te.editor = editor2;
+
+        te.configureAceEditor(editor2);
+        te.setEditorStyle(te.lastStyle, editor2);
+        te.keyBindings.setupKeyBindings();
+
+      } else {
+        te.editor = te.mainEditor;
+        split.setSplits(1);
+        te.setEditorStyle(te.lastStyle, te.editor);
+      }
+
+      te.setfocus();
     }
-}
+  }
+
+// Remove - delay and let .NET initialize to
+// avoid double styling flash
+//$(document).ready(function () {
+//  te.initialize();
+//});
 
 
-$(document).ready(function () {
-    te.initialize();
-}); 
-
-
-window.onerror = function windowError(message, filename, lineno, colno, error) {
+  window.onerror = function windowError(message, filename, lineno, colno, error) {
     var msg = "";
     if (message)
-        msg = message;
+      msg = message;
     if (filename)
-        msg += ", " + filename;
+      msg += ", " + filename;
     if (lineno)
-        msg += " (" + lineno + "," + colno + ")";
+      msg += " (" + lineno + "," + colno + ")";
     if (error)
-        msg += error;
+      msg += error;
 
     //var value = arguments.callee.caller;
 
     // show error messages in a little pop overwindow
     if (editorSettings.isDebug)
-        status(msg);
+      status(msg);
 
     if (textEditor)
-        textEditor.lastError = msg; 
+      textEditor.lastError = msg;
 
-    console.log(msg,filename,lineno,colno,error);
+    console.log(msg, filename, lineno, colno, error);
 
     // don't let errors trigger browser window
     return true;
-}
-
-window.onresize = debounce(function() {
-        te.mm.textbox.resizeWindow();
-    },
-	200);
+  }
 
 
-window.onmousewheel = function(e) {
-	if (e.ctrlKey) {
-		e.cancelBubble = true;
-		e.returnValue = false;
+  function windowResize() {
+    //if (te.mm && te.mm.textbox)
+    //  te.mm.textbox.resizeWindow();
 
-		if (e.wheelDelta > 0)
-			te.specialkey("ctrl-=");
-		if (e.wheelDelta < 0)
-			te.specialkey("ctrl--");
+    te.adjustPadding();
+  }
+  window.onresize = windowResize; //debounce(windowResize, 1);
 
-		return false;
-	}
-};
 
+  window.onmousewheel = function (e) {
+    if (e.ctrlKey) {
+      e.cancelBubble = true;
+      e.returnValue = false;
+
+      if (e.wheelDelta > 0)
+        te.keyboardCommand("ZoomEditorUp");
+      if (e.wheelDelta < 0)
+        te.keyboardCommand("ZoomEditorDown");
+
+      return false;
+    }
+  };
 
 
 //window.ondragover = function (e) {
-//    te.mousePos = e.getDocumentPosition(); 
+//    te.mousePos = e.getDocumentPosition();
 //    console.log('ondragover');
 //}
- //window.ondragstart = function (e) {    
- //    e.dataTransfer.effectAllowed = 'all';  
- //    console.log('ondragstart');
- //}
+//window.ondragstart = function (e) {
+//    e.dataTransfer.effectAllowed = 'all';
+//    console.log('ondragstart');
+//}
 
 // pass context popup to WPF for handling there
-window.oncontextmenu = function (e) {    
-    var isIE = navigator.userAgent.indexOf("Trident") > -1 ? true : false;    
+  window.oncontextmenu = function(e) {
+    var isIE = navigator.userAgent.indexOf("Trident") > -1 ? true : false;
     if (!isIE)
-        return;
+      return;
 
     e.preventDefault();
     e.cancelBubble = true;
 
     if (te.mm)
-        te.showSuggestions(e);
+      te.showSuggestions(e);
 
     return false;
-}
+  }
 
-// This function is global and called by the parent
+
+  function status(msg) {
+    var $el = $("#message");
+    if (!msg)
+      $el.hide();
+    else {
+      var dt = new Date();
+      $el.text(dt.getHours() +
+        ":" +
+        dt.getMinutes() +
+        ":" +
+        dt.getSeconds() +
+        "." +
+        dt.getMilliseconds() +
+        ": " +
+        msg);
+      $el.show();
+      setTimeout(function() { $("#message").fadeOut() }, 7000);
+    }
+  }
+
+
+
+
+})();
+
+
+// This function is global and called by the .NET parent app
 // to pass in the form object and pass back the text
 // editor instance that allows the parent to make
 // calls into this component
-function initializeinterop(textbox) {
-    te.mm = {};    
-    te.mm.textbox = textbox;
-    return window.textEditor;
+function initializeinterop(textbox, jsonStyle) {
+  var te = window.textEditor;
+
+  te.mm = {};
+  te.mm.textbox = textbox;
+
+  var style = JSON.parse(jsonStyle);
+
+  te.initialize(style);
+
+  setTimeout(te.keyBindings.setupKeyBindings, 800);
+
+  return window.textEditor;
 }
 
-function status(msg) {
-    var $el = $("#message");
-    if (!msg)
-        $el.hide();
-    else {        
-        var dt = new Date();
-        $el.text(dt.getHours() + ":" + dt.getMinutes() + ":" +
-            dt.getSeconds() + "." + dt.getMilliseconds() +
-            ": " + msg);
-        $el.show();
-        setTimeout(function() { $("#message").fadeOut() }, 5000);
-    }
-}
-
-
-
-/* ** Helpers  ** */
-
-function debounce(func, wait, immediate) {
-    var timeout;
-    return function () {
-        var context = this, args = arguments;
-        var later = function () {
-            timeout = null;
-            if (!immediate) func.apply(context, args);
-        };
-        var callNow = immediate && !timeout;
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-        if (callNow)
-            func.apply(context, args);
-    };
-};
-String.prototype.startsWith = function (sub, nocase) {
-    if (!this || this.length === 0 || sub === null) return false;
-
-    if (sub && nocase)
-        return this.toLowerCase().indexOf(sub.toLowerCase()) === 0;
-       
-    return this.indexOf(sub) === 0;
-}
-String.prototype.endsWith = function (sub, nocase) {
-    if (!this || this.length === 0) return false;
-
-    var ix = 0;
-    if (sub && nocase) {
-        ix = this.toLowerCase().lastIndexOf(sub.toLowerCase());
-        if (ix > 0 && ix + sub.length === this.length)
-            return true;
-        return false;
-    }
-
-    ix = this.lastIndexOf(sub);
-    if (ix > 0 && ix + sub.length === this.length)
-        return true;
-    return false;
-}
-String.prototype.extract = function (startDelim, endDelim, allowMissingEndDelim, returnDelims) {
-    var str = this;
-    if (str.length === 0)
-        return "";
-
-    var src = str.toLowerCase();
-    startDelim = startDelim.toLocaleLowerCase();
-    endDelim = endDelim.toLocaleLowerCase();
-
-    var i1 = src.indexOf(startDelim);
-    if (i1 == -1)
-        return "";
-
-    var i2 = src.indexOf(endDelim, i1 + startDelim.length);
-
-    if (!allowMissingEndDelim && i2 == -1)
-        return "";
-
-    if (allowMissingEndDelim && i2 == -1) {
-        if (returnDelims)
-            return str.substr(i1);
-
-        return str.substr(i1 + startDelim.length);
-    }
-
-    if (returnDelims)
-        return str.substr(i1, i2 - i1 + startDelim.length);
-
-    return str.substr(i1 + startDelim.length, i2 - i1 - startDelim.length);
-};
